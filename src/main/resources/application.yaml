@@ -1,0 +1,28 @@
+spring:
+  application:
+    name: cinema
+
+  datasource:
+    # jdbc:mysql: 앞에 p6spy: 를 끼워 넣으면 p6spy가 실제 mysql 드라이버를 감싸서
+    # 파라미터가 치환된 완성 SQL을 로그로 찍어준다 (설정은 resources/spy.properties)
+    url: jdbc:p6spy:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/cinema?serverTimezone=Asia/Seoul&characterEncoding=UTF-8
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:password}  # docker-compose.yml의 MYSQL_ROOT_PASSWORD 기본값과 일치
+    driver-class-name: com.p6spy.engine.spy.P6SpyDriver
+
+  # Spring Boot가 schema.sql / data.sql을 자동 실행하지 않도록 설정
+  # DDL은 직접 schema.sql → data.sql 순서로 수동 실행
+  sql:
+    init:
+      mode: never
+
+mybatis:
+  mapper-locations: classpath:mapper/**/*.xml
+  configuration:
+    map-underscore-to-camel-case: true   # DB: schedule_id → Java: scheduleId 자동 변환
+    # SQL 로그는 p6spy(spy.properties)가 담당. MyBatis 자체 로거는 꺼서 중복 방지
+    log-impl: org.apache.ibatis.logging.nologging.NoLoggingImpl
+
+logging:
+  level:
+    com.toy.cinema: DEBUG

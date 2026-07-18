@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  com.toy.cinema.screening.ScreeningMapper 인터페이스의 실제 SQL 구현.
+  schedule ⋈ movie ⋈ theater 조인으로 화면에 보여줄 스케줄 목록/상세를 만든다. 상태 전이가 없는
+  순수 조회라 SeatMapper 등과 달리 잠금(FOR UPDATE)이나 버전 조건이 필요 없다.
+  ScheduleView가 record가 아니라 Lombok(@Data) 클래스라 <constructor> 매핑 없이 resultType만으로
+  컬럼→setter 자동 매핑된다 (application.yaml의 map-underscore-to-camel-case: true 덕분).
+  쿼리마다 SELECT 컬럼을 <sql>로 공유하지 않고 각자 명시한다 — 지금은 목록/상세가 같은 컬럼이지만,
+  나중에 한쪽만 컬럼이 늘어도 다른 쪽엔 영향 없게 하기 위함 (SeatMapper의 find 2개, seat의 hold/confirm/release
+  dto 분리와 동일한 이유. AGENT.md dto 규칙 참고).
+-->
+<mapper namespace="com.toy.cinema.screening.ScreeningMapper">
+
+    <select id="findAllSchedules" resultType="com.toy.cinema.screening.dto.ScheduleView">
+        SELECT s.schedule_id,
+              m.title AS movie_title,
+              t.name AS theater_name,
+              s.start_time
+        FROM schedule s
+        JOIN movie m ON m.movie_id = s.movie_id
+        JOIN theater t ON t.theater_id = s.theater_id
+        ORDER BY s.start_time
+    </select>
+
+    <select id="findScheduleById" resultType="com.toy.cinema.screening.dto.ScheduleView">
+        SELECT s.schedule_id,
+               m.title AS movie_title,
+               t.name AS theater_name,
+               s.start_time
+        FROM schedule s
+        JOIN movie m ON m.movie_id = s.movie_id
+        JOIN theater t ON t.theater_id = s.theater_id
+        WHERE s.schedule_id = #{scheduleId}
+    </select>
+
+</mapper>

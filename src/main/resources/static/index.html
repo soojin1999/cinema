@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>영화 선택 — cinema</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<h1>상영 스케줄</h1>
+
+<table class="schedule-table">
+    <thead>
+    <tr>
+        <th>영화</th>
+        <th>상영관</th>
+        <th>시작 시간</th>
+        <th></th>
+    </tr>
+    </thead>
+    <tbody id="schedule-body"></tbody>
+</table>
+
+<p id="empty-message" class="hint" style="display:none;">등록된 상영 스케줄이 없습니다.</p>
+
+<script>
+    function formatDateTime(iso) {
+        const d = new Date(iso);
+        const pad = n => String(n).padStart(2, '0');
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+
+    async function loadSchedules() {
+        const res = await fetch('/schedules');
+        const schedules = await res.json();
+        const tbody = document.getElementById('schedule-body');
+        tbody.innerHTML = '';
+
+        if (schedules.length === 0) {
+            document.getElementById('empty-message').style.display = 'block';
+            return;
+        }
+
+        schedules.forEach(s => {
+            const tr = document.createElement('tr');
+            const link = document.createElement('a');
+            link.className = 'btn';
+            link.href = `/seats.html?scheduleId=${s.scheduleId}`;
+            link.textContent = '좌석 선택';
+
+            const tdMovie = document.createElement('td');
+            tdMovie.textContent = s.movieTitle;
+            const tdTheater = document.createElement('td');
+            tdTheater.textContent = s.theaterName;
+            const tdTime = document.createElement('td');
+            tdTime.textContent = formatDateTime(s.startTime);
+            const tdLink = document.createElement('td');
+            tdLink.appendChild(link);
+
+            tr.append(tdMovie, tdTheater, tdTime, tdLink);
+            tbody.appendChild(tr);
+        });
+    }
+
+    loadSchedules();
+</script>
+</body>
+</html>

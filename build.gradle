@@ -1,0 +1,70 @@
+plugins {
+	id 'java'
+	id 'org.springframework.boot' version '4.0.7'
+	id 'io.spring.dependency-management' version '1.1.7'
+}
+
+group = 'com.toy'
+version = '0.0.1-SNAPSHOT'
+
+java {
+	toolchain {
+		languageVersion = JavaLanguageVersion.of(17)
+	}
+}
+
+repositories {
+	mavenCentral()
+}
+
+dependencies {
+	implementation 'org.springframework.boot:spring-boot-starter-webmvc'
+	implementation 'org.mybatis.spring.boot:mybatis-spring-boot-starter:4.0.1'
+	compileOnly 'org.projectlombok:lombok'
+	runtimeOnly 'com.mysql:mysql-connector-j'
+	// p6spy: 파라미터가 바인딩된 완성 SQL을 로그로 보기 위한 개발용 JDBC 드라이버 래퍼.
+	// implementation인 이유: SqlLogFormat(com.toy.cinema.common.logging)이 컴파일 시점에
+	// MessageFormattingStrategy 인터페이스를 참조해야 해서 runtimeOnly로는 부족함
+	implementation 'p6spy:p6spy:3.9.1'
+	annotationProcessor 'org.projectlombok:lombok'
+	testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
+	testImplementation 'org.mybatis.spring.boot:mybatis-spring-boot-starter-test:4.0.1'
+	testCompileOnly 'org.projectlombok:lombok'
+	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+	testAnnotationProcessor 'org.projectlombok:lombok'
+}
+
+tasks.named('test') {
+	useJUnitPlatform()
+}
+
+// 소스 파일은 UTF-8로 저장돼 있는데, Gradle이 OS 기본 인코딩(한국어 Windows에선 보통 CP949)으로
+// .java 파일을 읽어버려서 한글 문자열 리터럴이 컴파일 시점에 깨지는 문제가 있었다.
+// compileJava/compileTestJava 둘 다 명시적으로 UTF-8을 강제한다.
+tasks.withType(JavaCompile).configureEach {
+	options.encoding = 'UTF-8'
+}
+
+// 컴파일이 UTF-8이어도, JVM이 System.out/로그 파일에 문자열을 "쓸 때" 쓰는 기본 인코딩은 별개 문제다.
+// Java 18부터는 UTF-8이 기본값(JEP 400)이지만 이 프로젝트는 Java 17이라 OS 기본값(CP949)을 그대로 쓴다.
+// -Dfile.encoding=UTF-8로 런타임 출력 인코딩도 강제한다.
+bootRun {
+	jvmArgs = ['-Dfile.encoding=UTF-8', '-Dsun.jnu.encoding=UTF-8']
+
+	// .env(gitignore 대상)에 있는 값을 bootRun 프로세스 환경변수로 주입한다.
+	// Gradle/JVM은 .env를 자동으로 안 읽어서 직접 파싱해서 넘겨줘야 한다 — DB_PASSWORD 등 실제
+	// 시크릿을 소스코드(application.yaml)에 남기지 않기 위함. .env가 없으면(.env.example만 있는 상태)
+	// application.yaml의 기본값(DB_PASSWORD:password)이 그대로 쓰인다.
+	doFirst {
+		def envFile = file('.env')
+		if (envFile.exists()) {
+			envFile.eachLine { line ->
+				line = line.trim()
+				if (line && !line.startsWith('#') && line.contains('=')) {
+					def idx = line.indexOf('=')
+					environment(line.substring(0, idx).trim(), line.substring(idx + 1).trim())
+				}
+			}
+		}
+	}
+}

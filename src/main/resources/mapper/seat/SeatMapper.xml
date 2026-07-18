@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  com.toy.cinema.seat.mapper.SeatMapper 인터페이스의 실제 SQL 구현.
+  schedule_seat 상태 전이(AVAILABLE/HELD/BOOKED)와 대기형(비관적, FOR UPDATE) / 충돌감지형(낙관적, version) 두 경로를 담당.
+  ScheduleSeat이 record(불변)라서 <constructor>로 생성자 기반 매핑을 명시적으로 사용한다.
+-->
+<mapper namespace="com.toy.cinema.seat.mapper.SeatMapper">
+
+    <resultMap id="scheduleSeatResultMap" type="com.toy.cinema.seat.domain.ScheduleSeat">
+        <constructor>
+            <idArg column="schedule_id" javaType="Long"/>
+            <idArg column="seat_id" javaType="Long"/>
+            <arg column="status" javaType="com.toy.cinema.common.enums.SeatStatus"/>
+            <arg column="version" javaType="Integer"/>
+            <arg column="updated_at" javaType="java.time.LocalDateTime"/>
+        </constructor>
+    </resultMap>
+
+    <!-- 대기형(비관적 락): 행을 잠그고 조회. 다른 트랜잭션이 같은 행에 FOR UPDATE를 걸면 이 SELECT가 끝날 때까지 대기(블로킹)한다 -->
+    <select id="findForUpdate" resultMap="scheduleSeatResultMap">
+        SELECT schedule_id, seat_id, status, version, updated_at
+        FROM schedule_seat
+        WHERE schedule_id = #{scheduleId} AND seat_id = #{seatId}
+        FOR UPDATE
+    </select>
+
+    <!-- 충돌감지형(낙관적 락): 잠그지 않고 그냥 조회. 대기 없이 바로 진행하다가 UPDATE 시점에 충돌 여부를 확인함 -->
+    <select id="findByScheduleIdAndSeatId" resultMap="scheduleSeatResultMap">
+        SELECT schedule_id, seat_id, status, version, updated_at
+        FROM schedule_seat
+        WHERE schedule_id = #{scheduleId} AND seat_id = #{seatId}
+    </select>
+
+    <!-- 대기형(비관적 락) 경로에서 사용. FOR UPDATE로 이미 잠갔으므로 status 조건은 사실상 항상 통과하지만,
+         "이 상태일 때만 바뀐다"는 전제를 SQL에도 명시적으로 남겨 방어적으로 작성 -->
+    <update id="updateStatus">
+        UPDATE schedule_seat
+        SET status = #{newStatus}, version = version + 1
+        WHERE schedule_id = #{scheduleId} AND seat_id = #{seatId} AND status = #{expectedStatus}
+    </update>
+
+    <!-- 충돌감지형(낙관적 락) 경로에서 사용. 내가 읽었던 version과 지금 DB의 version이 같을 때만 UPDATE된다.
+         영향받은 행 수가 0이면 그 사이 누군가 먼저 바꿨다는 뜻 (충돌 감지, 대기 없이 바로 알 수 있음) -->
+    <update id="updateStatusWithVersion">
+        UPDATE schedule_seat
+        SET status = #{newStatus}, version = version + 1
+        WHERE schedule_id = #{scheduleId} AND seat_id = #{seatId} AND version = #{expectedVersion}
+    </update>
+
+    <!-- 좌석 격자 화면 전용. seat(행/열)과 schedule_seat(상태)을 조인해서 가져온다. 잠금 없는 단순 SELECT.
+         SeatGridItem은 record가 아니라 Lombok(@Data) 클래스라 resultType만으로 setter 자동 매핑된다. -->
+    <select id="findGridByScheduleId" resultType="com.toy.cinema.seat.dto.SeatGridItem">
+        SELECT s.seat_id, s.row_num, s.col_num, ss.status
+        FROM schedule_seat ss
+                 JOIN seat s ON s.seat_id = ss.seat_id
+        WHERE ss.schedule_id = #{scheduleId}
+        ORDER BY s.row_num, s.col_num
+    </select>
+
+</mapper>

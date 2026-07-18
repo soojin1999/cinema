@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  com.toy.cinema.payment.mapper.PaymentMapper 인터페이스의 실제 SQL 구현.
+  Payment가 record라서 seat와 동일하게 <constructor>로 생성자 기반 매핑을 명시한다.
+-->
+<mapper namespace="com.toy.cinema.payment.mapper.PaymentMapper">
+
+    <resultMap id="paymentResultMap" type="com.toy.cinema.payment.domain.Payment">
+        <constructor>
+            <idArg column="payment_id" javaType="Long"/>
+            <arg column="booking_id" javaType="Long"/>
+            <arg column="payment_key" javaType="String"/>
+            <arg column="amount" javaType="Integer"/>
+            <arg column="status" javaType="com.toy.cinema.common.enums.PaymentStatus"/>
+            <arg column="created_at" javaType="java.time.LocalDateTime"/>
+            <arg column="updated_at" javaType="java.time.LocalDateTime"/>
+        </constructor>
+    </resultMap>
+
+    <!-- status는 항상 PENDING으로 시작. payment_key가 이미 있으면 UNIQUE 제약 위반으로 DuplicateKeyException -->
+    <insert id="insertPending">
+        INSERT INTO payment (booking_id, payment_key, amount, status)
+        VALUES (#{bookingId}, #{paymentKey}, #{amount}, 'PENDING')
+    </insert>
+
+    <update id="updateStatus">
+        UPDATE payment
+        SET status = #{status}
+        WHERE payment_key = #{paymentKey}
+    </update>
+
+    <select id="findByPaymentKey" resultMap="paymentResultMap">
+        SELECT payment_id, booking_id, payment_key, amount, status, created_at, updated_at
+        FROM payment
+        WHERE payment_key = #{paymentKey}
+    </select>
+
+    <select id="findByBookingId" resultMap="paymentResultMap">
+        SELECT payment_id, booking_id, payment_key, amount, status, created_at, updated_at
+        FROM payment
+        WHERE booking_id = #{bookingId}
+    </select>
+
+</mapper>

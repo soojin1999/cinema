@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  com.toy.cinema.booking.mapper.BookingMapper 인터페이스의 실제 SQL 구현.
+  Booking이 record라서 seat/payment와 동일하게 <constructor>로 생성자 기반 매핑을 명시한다.
+  insertPending과 selectLastInsertId는 반드시 같은 커넥션(=같은 트랜잭션) 안에서 연달아 호출돼야
+  LAST_INSERT_ID()가 올바른 값을 돌려준다 — BookingService.insertPending()이 이 순서를 보장한다.
+-->
+<mapper namespace="com.toy.cinema.booking.mapper.BookingMapper">
+
+    <resultMap id="bookingResultMap" type="com.toy.cinema.booking.domain.Booking">
+        <constructor>
+            <idArg column="booking_id" javaType="Long"/>
+            <arg column="schedule_id" javaType="Long"/>
+            <arg column="seat_id" javaType="Long"/>
+            <arg column="user_id" javaType="String"/>
+            <arg column="status" javaType="com.toy.cinema.common.enums.BookingStatus"/>
+            <arg column="created_at" javaType="java.time.LocalDateTime"/>
+            <arg column="updated_at" javaType="java.time.LocalDateTime"/>
+        </constructor>
+    </resultMap>
+
+    <insert id="insertPending">
+        INSERT INTO booking (schedule_id, seat_id, user_id, status)
+        VALUES (#{scheduleId}, #{seatId}, #{userId}, 'PENDING')
+    </insert>
+
+    <select id="selectLastInsertId" resultType="Long">
+        SELECT LAST_INSERT_ID()
+    </select>
+
+    <update id="updateStatus">
+        UPDATE booking
+        SET status = #{status}
+        WHERE booking_id = #{bookingId}
+    </update>
+
+    <select id="findById" resultMap="bookingResultMap">
+        SELECT booking_id, schedule_id, seat_id, user_id, status, created_at, updated_at
+        FROM booking
+        WHERE booking_id = #{bookingId}
+    </select>
+
+</mapper>

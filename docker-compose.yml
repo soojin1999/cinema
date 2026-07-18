@@ -1,0 +1,19 @@
+services:
+  mysql:
+    build:
+      context: ./docker/mysql        # charset.cnf를 이미지에 COPY로 구워넣음 (bind mount 시 Windows에서 world-writable로 보여 MySQL이 무시하는 문제 회피)
+    container_name: cinema-mysql
+    ports:
+      - "3306:3306"
+    environment:
+      # DB_PASSWORD는 .env 파일(gitignore 대상)에서 읽음 — application.yaml의 DB_PASSWORD와 같은 이름으로
+      # 통일해서, 두 파일 비밀번호가 따로 놀던 문제(README/STATUS.md 기록)를 원천 차단
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-password}
+      MYSQL_DATABASE: cinema
+      TZ: Asia/Seoul
+    volumes:
+      - cinema-mysql-data:/var/lib/mysql                      # 컨테이너 재시작해도 데이터 유지
+      - ./src/main/resources/sql:/docker-entrypoint-initdb.d  # 컨테이너 최초 실행 시 01-schema.sql → 02-data.sql 자동 실행
+
+volumes:
+  cinema-mysql-data:

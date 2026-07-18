@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>좌석 선택 — cinema</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<h1 id="header">불러오는 중...</h1>
+
+<div class="legend">
+    <span class="seat seat-available">AVAILABLE</span>
+    <span class="seat seat-held">HELD</span>
+    <span class="seat seat-booked">BOOKED</span>
+</div>
+
+<div class="seat-grid" id="seat-grid"></div>
+
+<div class="booking-form">
+    <label>사용자 ID <input type="text" id="userId" required></label>
+    <label>동시성 제어 방식
+        <select id="lockType">
+            <option value="PESSIMISTIC">대기형 (비관적 락)</option>
+            <option value="OPTIMISTIC">충돌감지형 (낙관적 락)</option>
+        </select>
+    </label>
+    <button type="button" class="btn" id="reserve-btn">예매하기</button>
+    <p id="form-error" class="result-fail" style="display:none;"></p>
+</div>
+
+<p class="hint">다른 사용자가 좌석을 바꾸면 몇 초 안에 자동으로 반영됩니다 (시연용 polling).</p>
+
+<script>
+    const scheduleId = new URLSearchParams(location.search).get('scheduleId');
+    let selectedSeatId = null;
+
+    function formatDateTime(iso) {
+        const d = new Date(iso);
+        const pad = n => String(n).padStart(2, '0');
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+
+    async function loadHeader() {
+        const res = await fetch(`/schedules/${scheduleId}`);
+        if (!res.ok) {
+            document.getElementById('header').textContent = '존재하지 않는 스케줄입니다.';
+            return;
+        }
+        const schedule = await res.json();
+        document.getElementById('header').textContent =
+            `${schedule.theaterName} — ${schedule.movieTitle} ${formatDateTime(schedule.startTime)}`;
+    }
+
+    function seatLabel(seat) {
+        const label = document.createElement('label');
+        label.id = `seat-${seat.seatId}`;
+        label.className = `seat seat-${seat.status.toLowerCase()}`;
+
+        const input = document.createElement('input');
+        input.type = 'radio';
+        input.name = 'seatId';
+        input.value = seat.seatId;
+        input.disabled = seat.status !== 'AVAILABLE';
+        input.addEventListener('change', () => {
+            selectedSeatId = seat.seatId;
+        });
+
+        const text = document.createElement('span');
+        text.textContent = seat.colNum;
+
+        label.append(input, text);
+        return label;
+    }
+
+    // 행(row_num) 단위로 묶어서 격자로 렌더링. 서버는 row_num, col_num 순으로 정렬된 평평한 리스트를 준다.
+    function renderGrid(seats) {
+        const grid = document.getElementById('seat-grid');
+        grid.innerHTML = '';
+        const rows = new Map();
+        seats.forEach(seat => {
+            if (!rows.has(seat.rowNum)) rows.set(seat.rowNum, []);
+            rows.get(seat.rowNum).push(seat);
+        });
+        rows.forEach((rowSeats, rowNum) => {
+            const rowDiv = document.createElement('div');
+            rowDiv.className = 'seat-row';
+            const rowLabel = document.createElement('span');
+            rowLabel.className = 'row-label';
+            rowLabel.textContent = rowNum;
+            rowDiv.appendChild(rowLabel);
+            rowSeats.forEach(seat => rowDiv.appendChild(seatLabel(seat)));
+            grid.appendChild(rowDiv);
+        });
+    }
+
+    async function loadSeats() {
+        const res = await fetch(`/schedules/${scheduleId}/seats`);
+        renderGrid(await res.json());
+    }
+
+    // polling 갱신: 좌석 칸만 새로 그리므로 입력 중인 사용자ID/락 방식은 그대로 유지된다.
+    // 내가 고른 좌석이 그 사이 다른 사람에게 넘어갔으면 선택이 풀린다(정상 동작).
+    async function refreshSeats() {
+        const res = await fetch(`/schedules/${scheduleId}/seats`);
+        const seats = await res.json();
+        seats.forEach(seat => {
+            const label = document.getElementById(`seat-${seat.seatId}`);
+            if (!label) return;
+            const input = label.querySelector('input');
+            const available = seat.status === 'AVAILABLE';
+            label.className = `seat seat-${seat.status.toLowerCase()}`;
+            input.disabled = !available;
+            if (!available && input.checked) {
+                input.checked = false;
+                if (selectedSeatId === seat.seatId) selectedSeatId = null;
+            }
+        });
+    }
+
+    async function reserve() {
+        const errorEl = document.getElementById('form-error');
+        errorEl.style.display = 'none';
+
+        const userId = document.getElementById('userId').value.trim();
+        if (!selectedSeatId || !userId) {
+            errorEl.textContent = '좌석과 사용자 ID를 모두 입력해주세요.';
+            errorEl.style.display = 'block';
+            return;
+        }
+
+        const res = await fetch('/bookings', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                scheduleId: Number(scheduleId),
+                seatId: selectedSeatId,
+                userId,
+                amount: 12000,
+                lockType: document.getElementById('lockType').value
+            })
+        });
+
+        if (!res.ok) {
+            const body = await res.json().catch(() => ({message: '예매에 실패했습니다.'}));
+            errorEl.textContent = body.message;
+            errorEl.style.display = 'block';
+            await refreshSeats();
+            return;
+        }
+
+        const created = await res.json();
+        location.href = `/booking-result.html?bookingId=${created.bookingId}`;
+    }
+
+    document.getElementById('reserve-btn').addEventListener('click', reserve);
+
+    loadHeader();
+    loadSeats();
+    setInterval(refreshSeats, 4000);
+</script>
+</body>
+</html>
