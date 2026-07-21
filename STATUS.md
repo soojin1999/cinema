@@ -8,10 +8,17 @@
 
 ## 🎯 다음 세션 시작 지점
 
-**백엔드(Saga 전체 흐름) + 프론트(스케줄 목록 → 좌석 선택 → 예매 결과)까지 전체 end-to-end 완성, 브라우저로 실제 검증까지 끝났다.**
-`.env` 기반 시크릿 분리까지 끝내고 2026-07-18 세션은 여기서 마무리. 다음 세션 우선순위:
+**`T-10` JUnit 학습 1~3단계 진행 중.** 2026-07-21 세션에서 JUnit 기초 개념(`@Test`/assertion/`@BeforeEach`/mock/`verify`)을
+개념 단위로 학습하고, `SeatServiceTest`(`src/test/java/com/toy/cinema/seat/SeatServiceTest.java`)에
+`SeatService.holdPessimistic()`/`holdOptimistic()` 성공·실패 경로 4개를 Mockito로 작성 완료:
+1. `holdPessimistic` — HELD 좌석 → `SeatNotAvailableException`
+2. `holdPessimistic` — AVAILABLE 좌석 → `updateStatus` 호출 확인 (`verify`)
+3. `holdOptimistic` — 버전 충돌(`updateStatusWithVersion` 0 리턴) → `SeatConflictException`
+4. `holdOptimistic` — 충돌 없음 → `updateStatusWithVersion` 호출 확인 (`verify`)
 
-1. **`T-10` — JUnit 테스트 작성 시작** (사용자 최초 학습, 단계별 진행). Stage 1(기초 문법)부터 시작 — `Todo.md` T-10 참고
+다음 세션 우선순위:
+
+1. **`T-10` 계속** — `SeatService`의 `confirm()`/`release()`/`getSeatGrid()`, 또는 다른 도메인(`PaymentService` 등)으로 Mockito 테스트 범위 확장. 3단계(Mockito)까지 어느 정도 커버되면 4단계(진짜 DB 동시성 통합테스트)로 넘어갈지 논의
 2. **`T-09` — DB 스키마 분리 실행** (도메인별 스키마, 방향 확정됨). JUnit 1~3단계와는 무관하게 진행 가능하지만, JUnit 4단계(동시성 통합테스트) 착수 전까지는 끝내야 함 — `Todo.md` T-09 참고
 3. `T-04` — HELD 타임아웃 배치 (그 다음 순위)
 4. `T-06` — `SeatConflictException`(낙관적 락 충돌) 재시도 로직 (그 다음 순위)
@@ -43,6 +50,8 @@
 ✅ p6spy SQL 로깅          common/logging/SqlLogFormat + spy.properties — 파라미터가 치환된 완성 SQL을 콘솔에 출력 (2026-07-18)
 ✅ git 저장소 + .env 시크릿 분리   .gitignore에 .claude/, .env 추가. DB_PASSWORD를 .env(git 제외) 하나로 통일 —
                           docker-compose.yml/application.yaml 둘 다 이 값을 봄. .env.example은 커밋됨 (2026-07-18)
+✅ T-10 1~3단계 착수         SeatServiceTest — holdPessimistic/holdOptimistic 성공·실패 경로 4개 (Mockito). 나머지 메서드·도메인은
+                          아직 미작성. 커버리지 상세 → docs/testing.md (2026-07-21)
 
 ⬜ T-04 HELD 타임아웃 배치
 ⬜ T-06 SeatConflictException 재시도 로직

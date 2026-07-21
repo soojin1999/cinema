@@ -36,8 +36,9 @@
 - 서비스 디스커버리, K8s
 - 실제 결제 PG 연동
 
-→ **단일 앱**은 유지한다. DB를 도메인별로 스키마 분리할지(단일 DB 유지 vs 스키마 분리)는 별도 논제로
-`Todo.md`에서 논의 중 — 이 줄은 그 결정이 나면 갱신한다.
+→ **단일 앱**은 유지한다. DB는 도메인별 스키마 분리로 방향이 확정됐다(`screening_db`/`seat_db`/`booking_db`/
+`payment_db`, 같은 MySQL 인스턴스 안에서 스키마만 분리 — 물리 서버 분리 아님, 2026-07-18 결정). 실행 시점은
+아직 미정 — 상세 → `Todo.md` T-09.
 
 ---
 
@@ -53,6 +54,7 @@
 | Frontend | 정적 HTML + Vanilla JS (REST API 호출) | 초기엔 Thymeleaf(SSR)로 시작했으나, 백엔드를 `@RestController` + JSON API로 통일하기로 하면서 뷰 렌더링도 클라이언트로 옮김. `static/`의 HTML이 fetch로 API를 호출해서 직접 DOM을 그림 (2026-07-18 결정, Todo.md 기록) |
 | 메시지 브로커 | 없음 | 오케스트레이터가 메서드를 순서대로 호출하면 충분. 브로커는 인프라 세팅에 시간을 뺏김 |
 | Build | Gradle (Groovy DSL) | 프로젝트 초기 설정 시 선택됨 |
+| Test | JUnit 5(Jupiter) + Mockito | `spring-boot-starter-webmvc-test`에 기본 포함돼 별도 의존성 추가 없이 사용. 사용자 JUnit 최초 학습 대상이라 단계별 진행 중 — 상세 → [docs/testing.md](docs/testing.md) |
 
 > Spring Boot 4.0.7은 2025-11-20 GA, 2026-06-10 패치. 안정 버전 확인 완료.
 
@@ -77,6 +79,7 @@ com.toy.cinema
 - [docs/db/diagram.md](docs/db/diagram.md) — ERD·상태 흐름 다이어그램
 - [docs/backend.md](docs/backend.md) — 아키텍처·Saga 흐름
 - [docs/frontend.md](docs/frontend.md) — 화면 설계
+- [docs/testing.md](docs/testing.md) — 테스트 커버리지 현황 (JUnit/Mockito)
 
 AI 개발 규칙 명세: [AGENT.md](AGENT.md)
 현재 개발 상태·세션 기록: [STATUS.md](STATUS.md)

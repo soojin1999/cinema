@@ -228,6 +228,7 @@ GET /bookings/{bookingId}
 | DB 구조·컬럼·키 | `docs/db/db.md` + `docs/db/diagram.md` |
 | 아키텍처·Saga·트랜잭션 | `docs/backend.md` |
 | 화면·라우팅 | `docs/frontend.md` |
+| 테스트 코드 추가·범위 변경 | `docs/testing.md` |
 | 파일 상태·전체 방향·세션 시작 지점 | [STATUS.md](STATUS.md) |
 | 미결 논제 발생 또는 해결 | `Todo.md` |
 | **도메인 하나 완성 시** | `docs/flow.md` — **사용자가 요청하지 않아도 자동으로** 시퀀스 다이어그램 갱신 |
