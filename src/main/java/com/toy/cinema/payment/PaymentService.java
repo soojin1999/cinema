@@ -30,7 +30,7 @@ public class PaymentService {
      * false를 리턴하면 "이미 SUCCESS로 끝난 결제가 있음 → gateway를 다시 부를 필요 없음 (멱등)".
      * payment_key가 FAILED/PENDING 상태로 이미 있으면 이 자리에서 바로 예외를 던진다.
      */
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    @Transactional(transactionManager = "paymentTransactionManager", propagation = Propagation.REQUIRES_NEW)
     public boolean insertPending(PaymentRequest request) {
         try {
             paymentMapper.insertPending(
@@ -50,18 +50,18 @@ public class PaymentService {
         };
     }
 
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    @Transactional(transactionManager = "paymentTransactionManager", propagation = Propagation.REQUIRES_NEW)
     public void markSuccess(String paymentKey) {
         paymentMapper.updateStatus(new UpdatePaymentStatusParams(paymentKey, PaymentStatus.SUCCESS));
     }
 
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    @Transactional(transactionManager = "paymentTransactionManager", propagation = Propagation.REQUIRES_NEW)
     public void markFailed(String paymentKey) {
         paymentMapper.updateStatus(new UpdatePaymentStatusParams(paymentKey, PaymentStatus.FAILED));
     }
 
     /** 지연 재조정(AGENT.md §2)에서 사용 — 이 booking의 결제가 어디까지 진행됐는지 조회. 결제 시도가 없으면 null. */
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    @Transactional(transactionManager = "paymentTransactionManager", propagation = Propagation.REQUIRES_NEW)
     public Payment findByBookingId(Long bookingId) {
         return paymentMapper.findByBookingId(bookingId);
     }

@@ -36,9 +36,9 @@
 - 서비스 디스커버리, K8s
 - 실제 결제 PG 연동
 
-→ **단일 앱**은 유지한다. DB는 도메인별 스키마 분리로 방향이 확정됐다(`screening_db`/`seat_db`/`booking_db`/
-`payment_db`, 같은 MySQL 인스턴스 안에서 스키마만 분리 — 물리 서버 분리 아님, 2026-07-18 결정). 실행 시점은
-아직 미정 — 상세 → `Todo.md` T-09.
+→ **단일 앱**은 유지한다. DB는 도메인별 스키마 4개(`screening_db`/`seat_db`/`booking_db`/`payment_db`)로
+분리 완료했다 (같은 MySQL 인스턴스 안에서 스키마만 분리 — 물리 서버 분리 아님, 2026-07-21 실행). 상세 →
+[docs/db/db.md](docs/db/db.md), `Todo.md` T-09.
 
 ---
 
@@ -96,7 +96,7 @@ AI 개발 규칙 명세: [AGENT.md](AGENT.md)
 docker compose up -d --build
 ```
 
-> 컨테이너 최초 실행 시 `01-schema.sql` → `02-data.sql`을 **자동으로 실행**한다 (파일명 앞 번호로 실행 순서 강제 — `docker-entrypoint-initdb.d`는 파일명 알파벳순 실행이라 번호 없인 `data.sql`이 먼저 돌아 테이블 생성 전에 실패함).
+> 컨테이너 최초 실행 시 `01~04-*-schema.sql`(스키마별 DDL) → `05-data.sql`(시드 데이터) 순서로 **자동 실행**한다 (파일명 앞 번호로 실행 순서 강제 — `docker-entrypoint-initdb.d`는 파일명 알파벳순 실행이라 번호 없인 `data.sql`이 먼저 돌아 테이블 생성 전에 실패함). 스키마가 도메인별로 4개(`screening_db`/`seat_db`/`booking_db`/`payment_db`)로 나뉘어 있다 — 상세 → `Todo.md` T-09.
 > `docker/mysql/charset.cnf`가 이미지에 구워져 있어 `mysql` 클라이언트 기본 charset이 `utf8mb4`로 강제된다 (Windows에서 bind mount로 이 파일을 넣으면 world-writable로 보여 MySQL이 무시해버리는 문제 때문에 이미지 빌드 방식으로 변경함 — 한글 등 멀티바이트 문자 이중 인코딩 방지).
 > 이미 컨테이너가 떠 있다면 이 단계 건너뜀.
 
@@ -139,11 +139,11 @@ docker compose logs mysql      # MySQL 로그 확인
 
 ### 증상
 
-`02-data.sql` 시드 데이터가 정상 실행됐는데도, 저장된 한글이 깨져서 나옴 (예: `인터스텔라` → 알 수 없는 문자열).
+시드 데이터(`sql/05-data.sql`, 예전엔 `02-data.sql`)가 정상 실행됐는데도, 저장된 한글이 깨져서 나옴 (예: `인터스텔라` → 알 수 없는 문자열).
 
 ### 원인 — mysql 클라이언트의 기본 charset이 `latin1`
 
-`docker-entrypoint-initdb.d`가 `02-data.sql`을 실행할 때 내부적으로 `mysql` 커맨드라인 클라이언트를 쓰는데, 이 클라이언트는 서버 설정(`character-set-server=utf8mb4`)과 무관하게 **자체 기본값인 `latin1`으로 접속**한다. 그 결과:
+`docker-entrypoint-initdb.d`가 초기화 SQL을 실행할 때 내부적으로 `mysql` 커맨드라인 클라이언트를 쓰는데, 이 클라이언트는 서버 설정(`character-set-server=utf8mb4`)과 무관하게 **자체 기본값인 `latin1`으로 접속**한다. 그 결과:
 
 ```
 character_set_server     = utf8mb4  ← 서버는 정상

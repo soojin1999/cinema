@@ -10,6 +10,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import org.springframework.transaction.PlatformTransactionManager;
 
 import javax.sql.DataSource;
 
@@ -41,5 +43,11 @@ public class PaymentDataSourceConfig {
         factoryBean.setConfiguration(mybatisConfig);
 
         return factoryBean.getObject();
+    }
+
+    /** DataSource가 여러 개면 Spring Boot가 자동으로 안 만들어줘서 도메인마다 명시적으로 등록 (상세 → SeatDataSourceConfig 주석, T-10 4단계에서 발견된 버그). */
+    @Bean
+    public PlatformTransactionManager paymentTransactionManager(DataSource paymentDataSource) {
+        return new DataSourceTransactionManager(paymentDataSource);
     }
 }

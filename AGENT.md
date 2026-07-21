@@ -214,8 +214,9 @@ GET /bookings/{bookingId}
 ### [스타일] 코딩 컨벤션
 
 - 의존성 주입은 **생성자 주입만** 사용 (`private final` 필드 + Lombok `@RequiredArgsConstructor`). 필드 주입(`@Autowired` on field) 금지 — 누락된 의존성을 기동 시점에 바로 잡아내고, 테스트에서 mock을 생성자로 바로 넣을 수 있게 하기 위함
-- **새 매퍼 인터페이스를 만들면 반드시 `@Mapper`(org.apache.ibatis.annotations.Mapper)를 붙인다.** `CinemaApplication`의 `@MapperScan(basePackages = "com.toy.cinema", annotationClass = Mapper.class)`가 이 어노테이션이 붙은 것만 매퍼로 등록한다 — 빠뜨리면 실제 DB 접근이 안 되고(테스트 필요), 반대로 `annotationClass` 없이 `basePackages`만 넓게 스캔하면 `SeatFacade` 같은 일반 인터페이스까지 매퍼로 착각해 가짜 프록시가 만들어지는 사고가 실제로 발생했음(`Invalid bound statement` 에러)
+- **새 매퍼 인터페이스를 만들면 반드시 `@Mapper`(org.apache.ibatis.annotations.Mapper)를 붙인다.** T-09(2026-07-21, DB 스키마 분리) 이후 전역 `@MapperScan`은 없고, `config` 패키지의 도메인별 `DataSourceConfig`(`SeatDataSourceConfig` 등)가 각자 `@MapperScan(basePackages = "com.toy.cinema.<도메인>", annotationClass = Mapper.class, sqlSessionFactoryRef = "...")`로 자기 도메인만 스캔한다 — 새 도메인을 추가하면 이 config 클래스도 함께 만들어야 한다. `annotationClass` 없이 `basePackages`만 넓게 스캔하면 `SeatFacade` 같은 일반 인터페이스까지 매퍼로 착각해 가짜 프록시가 만들어지는 사고가 실제로 발생했음(`Invalid bound statement` 에러) — 그래서 각 매퍼에 `@Mapper`를 명시하고 `annotationClass`로 스캔 대상을 제한하는 원칙은 그대로 유지
 - **파라미터가 2개 이상인 메서드는 무조건 dto(record)로 묶어서 받는다.** 원시값을 여러 개 나열하지 않는다 — 특히 같은 타입이 여럿이면(예: `Long scheduleId, Long seatId`) 순서를 실수로 바꿔도 컴파일러가 못 잡는 위험이 있음. `BookingController`/`BookingFacade`/`BookingOrchestrator`의 `reserve()`가 이 규칙 적용 대상 (`ReservationRequest`로 묶음). 파라미터가 1개면 그대로 원시값/단일 타입으로 받아도 됨
+- **`@Transactional`을 쓰는 새 Service를 만들면 반드시 `transactionManager`를 명시한다** (예: `@Transactional(transactionManager = "seatTransactionManager", propagation = Propagation.REQUIRES_NEW)`). T-09 이후 `DataSource`가 도메인별로 4개라 Spring Boot가 `PlatformTransactionManager`를 자동으로 못 만들어주고, `config` 패키지의 도메인별 `DataSourceConfig`가 각자 명시적으로 등록한 빈(`seatTransactionManager` 등)을 이름으로 지정해서 써야 한다. **이걸 빠뜨리면 에러 없이 `@Transactional`이 조용히 무시된다** — 실제로 T-10 4단계 동시성 테스트에서 이 사고가 났었음(순차 요청으로는 절대 안 드러나고, 진짜 동시 요청을 만들어야만 발견됨). 새 도메인을 추가하면 그 도메인의 `DataSourceConfig`에 `PlatformTransactionManager` 빈부터 등록할 것
 
 ---
 

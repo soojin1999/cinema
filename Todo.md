@@ -48,14 +48,21 @@
 - **미정**: `screening`을 그대로 확장할지, movie/theater/schedule을 각자 독립 도메인(Facade+Service)으로 쪼갤지는 착수 시점에 논의 — CRUD가 생기면 지금의 "Service 없는 예외"(상태 전이 없음을 근거로 함)가 더 이상 성립하지 않음
 
 ### T-10. JUnit 테스트 작성 (사용자 최초 학습 — 단계별 진행)
-- **현재**: 1~3단계 진행 중. `SeatServiceTest`에 `holdPessimistic`/`holdOptimistic` 성공·실패 경로 4개 작성 완료 (2026-07-21). 상세 커버리지 → [docs/testing.md](docs/testing.md)
+- **현재**: 4단계 착수. `SeatServiceConcurrencyTest`에 대기형(비관적) 락 동시성 테스트(스레드 2개) 작성 완료 (2026-07-21).
+  충돌감지형(낙관적) 락 쪽은 아직 미작성. 상세 커버리지 → [docs/testing.md](docs/testing.md)
 - **목표**: 지금까지 구현된 로직(특히 동시성 제어)을 자동화된 테스트로 관리
 - **계획된 4단계** (한 번에 다 안 하고 순서대로, 매 단계 확인받으며 진행):
   1. JUnit 기초 문법 — `@Test`, assertion, `./gradlew test` 실행법 ✅ (2026-07-21)
   2. 순수 로직 테스트 — `SeatService`의 상태 검증(예외 던지는 경로) 위주 — `holdPessimistic`/`holdOptimistic` 완료, `confirm`/`release`/`getSeatGrid` 남음
   3. Mockito로 의존성 모킹 — `SeatMapper`를 가짜로 대체해서 `holdPessimistic`/`holdOptimistic` 성공/충돌 경로 테스트 ✅ (2026-07-21, 4개 테스트 완료)
-  4. 동시성 통합 테스트 — 진짜 DB 위에서 여러 스레드가 동시에 같은 좌석을 잡을 때 대기형 vs 충돌감지형 락이 실제로 어떻게 다른지 검증 (이 프로젝트 핵심 학습 대상). 아직 미착수
-- **착수 시점**: 바로 다음 세션부터 (2026-07-18 결정). 1~3단계는 `T-09`(DB 스키마 분리)와 무관하게 진행 가능 — 진짜 DB를 안 보기 때문. 4단계 착수 전까지만 `T-09` 끝내면 됨
+  4. 동시성 통합 테스트 — 진짜 DB 위에서 여러 스레드가 동시에 같은 좌석을 잡을 때 대기형 vs 충돌감지형 락이 실제로 어떻게 다른지 검증 (이 프로젝트 핵심 학습 대상). **착수함** — 대기형 락(스레드 2개) 완료 (2026-07-21), 충돌감지형 락 쪽 남음
+- **2026-07-21 부수 발견**: 대기형 락 동시성 테스트를 처음 돌렸을 때 스레드 2개가 다 성공해버리는(락이 전혀 안 걸리는) 현상 발견 →
+  `PlatformTransactionManager` 빈이 하나도 없어서 `@Transactional`이 앱 전체(seat/payment/booking)에서 조용히 무시되고
+  있던 버그였음(T-09가 `DataSource`를 4개로 쪼개면서 Spring Boot의 자동 트랜잭션 매니저 생성이 조건 불충족으로 빠짐).
+  `config` 패키지 4개 클래스에 `PlatformTransactionManager` 빈 추가 + `SeatService`/`PaymentService`/`BookingService`의
+  `@Transactional`에 `transactionManager` 명시로 수정. 순차 요청(curl/브라우저)으로는 절대 안 드러나고 진짜 동시성
+  테스트로만 잡을 수 있었던 버그 — T-10 4단계가 왜 "이 프로젝트 핵심 학습 대상"인지 보여준 사례
+- **착수 시점**: 바로 다음 세션부터 (2026-07-18 결정). 1~3단계는 `T-09`(DB 스키마 분리)와 무관하게 진행 가능 — 진짜 DB를 안 보기 때문. `T-09`는 2026-07-21 완료돼서 4단계(진짜 DB 동시성 통합테스트) 착수 조건은 이미 충족됨
 
 ### T-11. MySQL을 로컬 Docker가 아닌 실제 서버로 배포
 - **현재**: MySQL이 로컬 PC의 Docker 컨테이너로만 떠 있음 (`docker compose up`). 앱도 `./gradlew bootRun`으로 로컬에서만 실행
@@ -69,13 +76,6 @@
 - **착수 조건**: 이 프로젝트에서 구현하려던 것(Saga/동시성/테스트 등 학습 페이즈 + T-05/T-08 등 나중 항목)을 다 끝낸 뒤, 마지막에 해볼 주제로 보류
 - **선행 조건**: 앱 자체가 아직 도커라이즈 안 돼 있음(`docker-compose.yml`엔 MySQL만 있음) — 이것부터 해야 blue/green이 의미가 생김
 - **연관**: `T-11`(MySQL 실서버 배포)과 같은 "실제로 써먹을 수 있는 앱" 격상 단계에서 함께 검토
-
-### T-09. DB 스키마 분리 실행 계획 (방향은 결정됨 — 착수 시점만 미정)
-- **결정된 방향**: 도메인별 스키마 분리로 간다 (`screening_db`/`seat_db`/`booking_db`/`payment_db`, 같은 MySQL 인스턴스 안에서 스키마만 분리 — 물리 서버 분리 아님). `booking → schedule_seat` 같은 도메인 간 FK는 없애고 애플리케이션(Facade 호출) 레벨 정합성 체크로 대체. 상세 배경 → 완료된 논제 표 (2026-07-18)
-- **연결 구조**: B안 확정 — 도메인마다 별도 `DataSource` + `SqlSessionFactory` 빈, `@MapperScan(sqlSessionFactoryRef=...)`로 패키지별 라우팅. 실수해도 DB 레벨에서 물리적으로 막히는 쪽을 선택 (2026-07-18 결정)
-- **착수 순서 결정**: JUnit 학습(1~3단계, Mockito로 Mapper를 가짜 처리하는 단위테스트)을 먼저 진행 — 진짜 DB를 안 보기 때문에 스키마 구조와 무관함. 스키마 분리는 JUnit 4단계(진짜 DB 동시성 통합테스트) 착수 전에만 끝내면 됨 (2026-07-18 결정)
-- **실제 변경 범위 확인**: `ScreeningMapper`(schedule⋈movie⋈theater)와 `SeatMapper.findGridByScheduleId`(schedule_seat⋈seat)는 둘 다 같은 스키마 내부 조인이라 스키마 분리해도 SQL은 안 바뀜. 실제로 없애야 하는 건 도메인을 건너뛰는 FK 4개뿐: `seat.theater_id→theater`, `schedule_seat.schedule_id→schedule`, `booking(schedule_id,seat_id)→schedule_seat`, `payment.booking_id→booking`. `booking→schedule_seat` 정합성은 이미 Saga의 hold() 단계가 애플리케이션 레벨에서 체크하고 있어서 FK 제거 영향 적음
-- **패키지/스키마 이름**: `catalog` → `screening`으로 리네이밍 완료 (Java 패키지, 클래스, XML, DB 스키마 계획명 전부 일치, 2026-07-18)
 
 ---
 
@@ -110,3 +110,4 @@
 | - | dto record vs Lombok | "SELECT 결과가 가공·참조 없이 그대로 클라이언트 응답으로 리턴되는" 순수 조회 응답 dto(`ScheduleView`, `SeatGridItem`)는 record 대신 Lombok `@Data`로 작성 — MyBatis `<constructor>` 매핑 생략 가능. command/domain dto는 계속 record. 상세 기준 → AGENT.md §1 | 2026-07-18 |
 | - | 최종 목표 범위 확정 | 학습 페이즈(경계·Saga·테스트) 이후 최종 목표는 실제 운영 가능한 영화관 예매 앱 — 극장/영화/스케줄 등록, 좌석 배치 커스터마이징. 베이스는 여전히 MSA 구조 학습. 상세 → README.md "최종 목표" | 2026-07-18 |
 | - | DB 스키마 분리 방향 | "MSA 구조를 제대로 공부하려면 데이터 레벨 경계도 지금 겪어보는 게 낫다"고 판단 — 도메인별 스키마 분리로 방향 확정 (물리 서버 분리는 아님, 범위 밖 유지). 지금 규모가 작을 때 하는 게 관리자 CRUD까지 붙은 뒤보다 훨씬 저렴하다는 게 근거. 착수 시점은 T-09에서 별도 논의 | 2026-07-18 |
+| T-09 | DB 스키마 분리 실행 | `screening_db`/`seat_db`/`booking_db`/`payment_db` 4개 스키마로 분리, 도메인 간 FK 4개(`seat.theater_id`, `schedule_seat.schedule_id`, `booking→schedule_seat`, `payment.booking_id`) 제거하고 애플리케이션(Saga 호출 순서) 레벨 정합성으로 대체. `config` 패키지에 도메인별 `DataSource`+`SqlSessionFactory`+`@MapperScan(sqlSessionFactoryRef=...)` 4벌 구성, `CinemaApplication`의 전역 `@MapperScan` 제거. FK 제거로 생기는 위험은 T-08(관리자 CRUD) 착수 시점에 애플리케이션 레벨 검증 추가하기로 결정(지금은 시드 데이터만 채워지고 런타임 위험 없음). 실행 후 `docker compose down -v`로 볼륨 재초기화 + 전체 Saga 흐름(hold→pay→confirm, 3개 스키마 관통) 실제 HTTP 검증 완료 | 2026-07-21 |

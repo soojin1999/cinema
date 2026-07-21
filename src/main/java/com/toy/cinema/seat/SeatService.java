@@ -31,7 +31,7 @@ public class SeatService {
     private final SeatMapper seatMapper;
 
     // 대기형(비관적 락): FOR UPDATE로 행을 잠근 뒤 검증. 경합 시 다른 요청을 기다리게(블로킹) 했다가 항상 성공으로 끝난다
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    @Transactional(transactionManager = "seatTransactionManager", propagation = Propagation.REQUIRES_NEW)
     public void holdPessimistic(SeatHoldCommand cmd) {
         ScheduleSeatKey key = new ScheduleSeatKey(cmd.scheduleId(), cmd.seatId());
         ScheduleSeat current = seatMapper.findForUpdate(key);
@@ -46,7 +46,7 @@ public class SeatService {
     }
 
     // 충돌감지형(낙관적 락): 잠금 없이 조회 후 version 조건부 UPDATE. 기다리게 하지 않고 경합 시 즉시 SeatConflictException으로 실패
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    @Transactional(transactionManager = "seatTransactionManager", propagation = Propagation.REQUIRES_NEW)
     public void holdOptimistic(SeatHoldCommand cmd) {
         ScheduleSeatKey key = new ScheduleSeatKey(cmd.scheduleId(), cmd.seatId());
         ScheduleSeat current = seatMapper.findByScheduleIdAndSeatId(key);
@@ -66,21 +66,21 @@ public class SeatService {
     }
 
     // Saga ③ 성공 경로. HELD -> BOOKED. affected==0(이미 확정됨 등)은 지금은 그냥 무시 (오케스트레이터 단계에서 재검토 예정)
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    @Transactional(transactionManager = "seatTransactionManager", propagation = Propagation.REQUIRES_NEW)
     public void confirm(SeatConfirmCommand cmd) {
         seatMapper.updateStatus(
                 new UpdateStatusParams(cmd.scheduleId(), cmd.seatId(), SeatStatus.BOOKED, SeatStatus.HELD));
     }
 
     // 보상 트랜잭션. HELD -> AVAILABLE. affected==0을 무시하는 덕분에 멱등적으로 동작함 (AGENT.md 요구사항)
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    @Transactional(transactionManager = "seatTransactionManager", propagation = Propagation.REQUIRES_NEW)
     public void release(SeatReleaseCommand cmd) {
         seatMapper.updateStatus(
                 new UpdateStatusParams(cmd.scheduleId(), cmd.seatId(), SeatStatus.AVAILABLE, SeatStatus.HELD));
     }
 
     // 좌석 격자 화면 조회. Saga 단계가 아니지만 다른 메서드와 동일하게 REQUIRES_NEW로 통일 (일관성)
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    @Transactional(transactionManager = "seatTransactionManager", propagation = Propagation.REQUIRES_NEW)
     public List<SeatGridItem> getSeatGrid(Long scheduleId) {
         return seatMapper.findGridByScheduleId(scheduleId);
     }

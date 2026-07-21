@@ -8,28 +8,32 @@
 
 ## 🎯 다음 세션 시작 지점
 
-**`T-10` JUnit 학습 1~3단계 진행 중.** 2026-07-21 세션에서 JUnit 기초 개념(`@Test`/assertion/`@BeforeEach`/mock/`verify`)을
-개념 단위로 학습하고, `SeatServiceTest`(`src/test/java/com/toy/cinema/seat/SeatServiceTest.java`)에
-`SeatService.holdPessimistic()`/`holdOptimistic()` 성공·실패 경로 4개를 Mockito로 작성 완료:
-1. `holdPessimistic` — HELD 좌석 → `SeatNotAvailableException`
-2. `holdPessimistic` — AVAILABLE 좌석 → `updateStatus` 호출 확인 (`verify`)
-3. `holdOptimistic` — 버전 충돌(`updateStatusWithVersion` 0 리턴) → `SeatConflictException`
-4. `holdOptimistic` — 충돌 없음 → `updateStatusWithVersion` 호출 확인 (`verify`)
+**`T-10` 4단계(진짜 DB 동시성 통합테스트) 착수.** 2026-07-21 세션에서 `SeatServiceConcurrencyTest`에
+대기형(비관적) 락 동시성 테스트(스레드 2개, `ExecutorService`+`CountDownLatch`)를 작성하고 실제 `seat_db`로 검증했다.
+
+**과정에서 실제 버그를 발견·수정**: 처음 테스트를 돌렸을 때 스레드 2개가 다 성공해버림 → `T-09`가 `DataSource`를
+4개로 쪼개면서 `PlatformTransactionManager` 빈이 하나도 자동 생성되지 않아 `@Transactional`이 앱 전체(seat/payment/
+booking)에서 조용히 무시되고 있었음. `config` 패키지 4개 클래스에 `PlatformTransactionManager` 빈 추가 +
+`SeatService`/`PaymentService`/`BookingService`의 `@Transactional`에 `transactionManager` 명시로 수정, 재검증 완료.
+상세 → `Todo.md` T-10, `docs/testing.md`.
+
+`T-09`(DB 스키마 분리)는 지난 세션에 완료 — `screening_db`/`seat_db`/`booking_db`/`payment_db` 4개 스키마, 도메인 간
+FK 4개 제거, `config` 패키지 도메인별 `DataSource`+`SqlSessionFactory`+`@MapperScan` 구성. 상세 → `docs/db/db.md`.
 
 다음 세션 우선순위:
 
-1. **`T-10` 계속** — `SeatService`의 `confirm()`/`release()`/`getSeatGrid()`, 또는 다른 도메인(`PaymentService` 등)으로 Mockito 테스트 범위 확장. 3단계(Mockito)까지 어느 정도 커버되면 4단계(진짜 DB 동시성 통합테스트)로 넘어갈지 논의
-2. **`T-09` — DB 스키마 분리 실행** (도메인별 스키마, 방향 확정됨). JUnit 1~3단계와는 무관하게 진행 가능하지만, JUnit 4단계(동시성 통합테스트) 착수 전까지는 끝내야 함 — `Todo.md` T-09 참고
-3. `T-04` — HELD 타임아웃 배치 (그 다음 순위)
-4. `T-06` — `SeatConflictException`(낙관적 락 충돌) 재시도 로직 (그 다음 순위)
+1. **`T-10` 계속** — 충돌감지형(낙관적) 락 쪽 동시성 테스트("기다리지 않고 즉시 충돌") 추가. 그다음 `SeatService`의 `confirm()`/`release()`/`getSeatGrid()`, 다른 도메인(`PaymentService` 등)으로 Mockito 테스트 범위 확장
+2. `T-04` — HELD 타임아웃 배치
+3. `T-06` — `SeatConflictException`(낙관적 락 충돌) 재시도 로직
 
 ## 완료된 것
 
 ```
 ✅ build.gradle           의존성 완료 (Thymeleaf 제거, webmvc+mybatis만 유지. UTF-8 인코딩 옵션 포함)
 ✅ application.yaml       DB 접속 설정 완료 (localhost:3306, Docker MySQL, 비밀번호 password로 통일)
-✅ sql/01-schema.sql      테이블 DDL (schedule_seat.version 컬럼 포함). 파일명 번호로 data.sql보다 먼저 실행되도록 강제
-✅ sql/02-data.sql        시드 데이터 (영화1, A관, 25석, 스케줄1)
+✅ sql/01~04-*-schema.sql 도메인별 스키마 DDL (screening_db/seat_db/booking_db/payment_db, schedule_seat.version 컬럼 포함).
+                          파일명 번호로 실행 순서 강제 (T-09, 2026-07-21에 단일 01-schema.sql에서 분리)
+✅ sql/05-data.sql        시드 데이터 (영화1, A관, 25석, 스케줄1) — 스키마 전환하며 시딩
 ✅ docs/                  설계 문서 완료
 ✅ common/enums           SeatStatus, BookingStatus, PaymentStatus
 ✅ common/exception       CinemaException, SeatNotAvailableException, SeatConflictException, PaymentFailedException,
@@ -52,6 +56,12 @@
                           docker-compose.yml/application.yaml 둘 다 이 값을 봄. .env.example은 커밋됨 (2026-07-18)
 ✅ T-10 1~3단계 착수         SeatServiceTest — holdPessimistic/holdOptimistic 성공·실패 경로 4개 (Mockito). 나머지 메서드·도메인은
                           아직 미작성. 커버리지 상세 → docs/testing.md (2026-07-21)
+✅ T-09 DB 스키마 분리       screening_db/seat_db/booking_db/payment_db 4개로 분리, 도메인 간 FK 4개 제거, config 패키지에
+                          도메인별 DataSource+SqlSessionFactory+@MapperScan(sqlSessionFactoryRef) 구성. docker-compose.yml/
+                          application.yaml 갱신, 전체 Saga 흐름 실제 HTTP 검증 완료 (2026-07-21)
+✅ T-10 4단계 착수 + 버그 수정  SeatServiceConcurrencyTest — 대기형(비관적) 락 동시성 테스트(스레드 2개). 처음 돌렸을 때
+                          PlatformTransactionManager 빈 부재로 @Transactional 전체가 무시되던 버그 발견·수정(config
+                          패키지 4개 + Seat/Payment/BookingService). 충돌감지형 락 쪽은 아직 미작성 (2026-07-21)
 
 ⬜ T-04 HELD 타임아웃 배치
 ⬜ T-06 SeatConflictException 재시도 로직
@@ -109,6 +119,6 @@ Thymeleaf SSR로 좌석 화면을 먼저 구현했다가, 프로젝트를 처음
 | 호스트 | localhost |
 | 포트 | 3306 |
 | 구동 방식 | Docker 컨테이너 (`docker compose up -d --build` — Dockerfile 빌드 방식이라 `--build` 필요) |
-| 비밀번호 | `password` (docker-compose.yml/application.yaml 둘 다 통일됨) |
-| DB명 | cinema |
-| 접속 URL | `jdbc:mysql://localhost:3306/cinema?serverTimezone=Asia/Seoul&characterEncoding=UTF-8` |
+| 비밀번호 | `password` (docker-compose.yml/application.yaml의 4개 `app.datasource.*` 블록 전부 `.env`의 `DB_PASSWORD` 하나로 통일) |
+| DB명 | `screening_db`/`seat_db`/`booking_db`/`payment_db` 4개 (T-09, 2026-07-21 — 예전엔 `cinema` 단일 스키마였음) |
+| 접속 URL 예 | `jdbc:mysql://localhost:3306/seat_db?serverTimezone=Asia/Seoul&characterEncoding=UTF-8` (나머지 3개도 DB명만 다름) |

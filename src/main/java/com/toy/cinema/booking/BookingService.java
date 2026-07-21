@@ -22,23 +22,23 @@ public class BookingService {
     private final BookingMapper bookingMapper;
 
     /** INSERT 직후 같은 커넥션에서 LAST_INSERT_ID()를 회수해서 리턴한다 (record 파라미터 불변성 유지). */
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    @Transactional(transactionManager = "bookingTransactionManager", propagation = Propagation.REQUIRES_NEW)
     public Long insertPending(InsertBookingParams params) {
         bookingMapper.insertPending(params);
         return bookingMapper.selectLastInsertId();
     }
 
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    @Transactional(transactionManager = "bookingTransactionManager", propagation = Propagation.REQUIRES_NEW)
     public void confirm(Long bookingId) {
         bookingMapper.updateStatus(new UpdateBookingStatusParams(bookingId, BookingStatus.CONFIRMED));
     }
 
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    @Transactional(transactionManager = "bookingTransactionManager", propagation = Propagation.REQUIRES_NEW)
     public void cancel(Long bookingId) {
         bookingMapper.updateStatus(new UpdateBookingStatusParams(bookingId, BookingStatus.CANCELLED));
     }
 
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    @Transactional(transactionManager = "bookingTransactionManager", propagation = Propagation.REQUIRES_NEW)
     public Booking findById(Long bookingId) {
         return bookingMapper.findById(bookingId);
     }

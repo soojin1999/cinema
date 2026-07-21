@@ -1,7 +1,10 @@
 # Backend 설계 문서
 
-> **최종 수정**: 2026-07-18
+> **최종 수정**: 2026-07-21
 > **원칙**: 기술 레이어(controller/service/mapper)가 아닌 **도메인**으로 먼저 나눈다.
+> **T-09(2026-07-21)**: DB를 도메인별 스키마 4개로 분리하고 `config` 패키지에 도메인별
+> `DataSource`+`SqlSessionFactory`+`@MapperScan` 구성을 추가했다. 상세 → §2 `config` 패키지,
+> [docs/db/db.md](db/db.md).
 
 ---
 
@@ -78,12 +81,32 @@ com.toy.cinema
 │   ├── NotificationFacadeImpl     ← 구현체 (현재는 로그만 출력, Service 계층 불필요 — DB/외부 호출 없음)
 │   └── dto/     NotificationRequest (userId, message)
 │
-└── common                         ← 공통 ✅ 완성
-    ├── exception                  ← CinemaException, SeatNotAvailableException, SeatConflictException, PaymentFailedException,
-    │                                 GlobalExceptionHandler(@RestControllerAdvice — CinemaException 하위를 409/400 JSON으로 변환), ErrorResponse
-    ├── enums                      ← SeatStatus, BookingStatus, PaymentStatus
-    └── logging                    ← SqlLogFormat — p6spy 콘솔 로그 포맷터 (spy.properties가 참조, 개발용)
+├── common                         ← 공통 ✅ 완성
+│   ├── exception                  ← CinemaException, SeatNotAvailableException, SeatConflictException, PaymentFailedException,
+│   │                                 GlobalExceptionHandler(@RestControllerAdvice — CinemaException 하위를 409/400 JSON으로 변환), ErrorResponse
+│   ├── enums                      ← SeatStatus, BookingStatus, PaymentStatus
+│   └── logging                    ← SqlLogFormat — p6spy 콘솔 로그 포맷터 (spy.properties가 참조, 개발용)
+│
+└── config                         ← 도메인별 DataSource 배선 ✅ 완성 (T-09, 2026-07-21)
+    ├── ScreeningDataSourceConfig  ← screening_db 전용 DataSource+SqlSessionFactory+@MapperScan(sqlSessionFactoryRef="screeningSqlSessionFactory")
+    ├── SeatDataSourceConfig       ← seat_db 전용 (위와 동일 패턴)
+    ├── BookingDataSourceConfig    ← booking_db 전용
+    └── PaymentDataSourceConfig    ← payment_db 전용
 ```
+
+> **도메인별 스키마 분리(T-09)**: `CinemaApplication`엔 더 이상 전역 `@MapperScan`이 없다. 도메인 패키지(`basePackages`)와
+> DB 커넥션(`sqlSessionFactoryRef`)을 함께 지정해야 해서, `config` 패키지의 클래스 4개가 각자 자기 도메인만 스캔하고
+> 자기 스키마로만 연결한다. `mybatis.mapper-locations`/`configuration.*`(map-underscore-to-camel-case 등)도 YAML이
+> 아니라 각 `SqlSessionFactoryBean`에서 직접 설정 — Spring Boot의 자동 설정은 `DataSource`/`SqlSessionFactory`가
+> 하나도 없을 때만 동작하는데, 지금은 4개를 수동으로 만들어서 자동 설정 자체가 개입하지 않기 때문.
+>
+> **⚠️ `PlatformTransactionManager`도 도메인별로 직접 등록해야 함 (T-10 4단계에서 실제로 겪은 버그, 2026-07-21)**:
+> `DataSource`와 마찬가지로, Spring Boot는 `DataSource`가 정확히 1개일 때만 `PlatformTransactionManager`를 자동
+> 생성해준다. 4개로 쪼갠 뒤 아무도 명시적으로 안 만들어주면 `@EnableTransactionManagement` 자체가 비활성화돼서
+> `@Transactional`이 **에러 없이 조용히 무시**된다 — 순차 요청으로는 절대 안 드러나고 진짜 동시성 테스트를 돌려야만
+> 발견됨. 그래서 `config` 패키지 4개 클래스 전부에 `PlatformTransactionManager` 빈을 두고(`seatTransactionManager`
+> 등), `SeatService`/`PaymentService`/`BookingService`의 `@Transactional`에 `transactionManager = "..."`를 명시한다.
+> **새 도메인을 추가할 때 이 빈과 명시를 빠뜨리면 트랜잭션이 아무 말 없이 그냥 안 걸린다** — 반드시 세트로 추가할 것.
 
 > **Facade 경계 규칙**: 각 도메인의 Facade는 인터페이스 + Impl 구현체로 작성하고(나중에 물리 분리 대비), `domain` 객체나 원시값이 아닌 `dto`(Command/Info 등)만 파라미터·리턴 타입으로 사용한다. `BookingController`도 `BookingOrchestrator`를 직접 참조하지 않고 `BookingFacade`를 통해서만 호출한다.
 > **mapper 전용 파라미터 객체**(예: `ScheduleSeatKey`, `UpdateStatusParams`, `PgChargeRequest`)는 `dto/`가 아니라 해당 도메인 패키지에 둔다 — 다른 도메인이 알아야 할 개념이 아니라, Service↔Mapper/Gateway 사이의 내부 배관이기 때문.
@@ -289,9 +312,10 @@ public class TossPaymentGateway implements PaymentGateway { ... }
 | 항목 | 상태 |
 |------|------|
 | `build.gradle` 의존성 | ✅ 완료 |
-| `application.yaml` DB 설정 | ✅ 완료 (기본값 `password`, docker-compose.yml과 통일됨) |
-| `01-schema.sql` 테이블 DDL | ✅ 완료 (`schedule_seat.version` 포함, 번호 접두사로 실행 순서 강제) |
-| `02-data.sql` 시드 데이터 | ✅ 완료 |
+| `application.yaml` DB 설정 | ✅ 완료 — `app.datasource.{screening,seat,booking,payment}` 4개 블록, 비밀번호는 `.env`의 `DB_PASSWORD` 하나로 통일 (T-09, 2026-07-21) |
+| `01~04-*-schema.sql` 도메인별 DDL | ✅ 완료 (`schedule_seat.version` 포함, 도메인 간 FK 4개 제거, 번호 접두사로 실행 순서 강제) |
+| `05-data.sql` 시드 데이터 | ✅ 완료 (스키마 전환하며 시딩, T-09) |
+| `config` 패키지 (도메인별 DataSource+SqlSessionFactory) | ✅ 완료 (T-09, 2026-07-21) |
 | `common` (enums, exception) | ✅ 완료 |
 | `seat` 도메인 (dto/domain/mapper/Service/Facade) | ✅ 완료 |
 | `SeatService` 동시성 구현 | ✅ 완료 (대기형/충돌감지형 락 둘 다) |
