@@ -1,19 +1,15 @@
 package com.toy.cinema;
 
-import org.apache.ibatis.annotations.Mapper;
-import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 /**
- * @MapperScan(annotationClass = Mapper.class)로 com.toy.cinema 아래에서 @Mapper가 붙은 인터페이스만
- * 매퍼로 등록한다. basePackages만 주고 annotationClass를 안 주면 SeatFacade/PaymentFacade 같은
- * 일반 인터페이스까지 전부 "매퍼"로 착각해서 가짜 프록시를 만들어버려, 실제 Facade 구현체(Impl) 대신
- * 그 가짜 프록시가 주입되는 사고가 난다 (실제로 겪은 버그 — BookingFacade.reserve() 호출 시
- * "Invalid bound statement" 에러). 그래서 각 SeatMapper/PaymentMapper/BookingMapper에 @Mapper를
- * 명시적으로 붙이고, 스캔 대상도 그것만으로 제한한다.
+ * T-09(2026-07-21) 도메인별 스키마 분리 이전엔 여기 전역 @MapperScan(annotationClass = Mapper.class)
+ * 하나로 com.toy.cinema 아래 @Mapper 붙은 인터페이스를 전부 스캔했다. 지금은 도메인마다 DB(스키마)가
+ * 갈라져서 "어떤 SqlSessionFactory(=어떤 DB 연결)를 쓸지"까지 지정해야 하므로, 그 지정이 불가능한
+ * 전역 스캔은 제거하고 config 패키지의 도메인별 DataSourceConfig(ScreeningDataSourceConfig 등)가
+ * 각자 @MapperScan(sqlSessionFactoryRef=...)으로 자기 도메인만 스캔한다.
  */
-@MapperScan(basePackages = "com.toy.cinema", annotationClass = Mapper.class)
 @SpringBootApplication
 public class CinemaApplication {
 

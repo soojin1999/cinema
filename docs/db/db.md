@@ -1,12 +1,25 @@
 # DB 설계 문서
 
-> **최종 수정**: 2026-07-17
+> **최종 수정**: 2026-07-21
 > **원칙**: 기술 레이어가 아닌 도메인 중심으로 테이블을 설계한다.
 > 상태(status)는 ENUM으로 DB 레벨에서 제약한다.
+> **T-09(2026-07-21) 이후**: 도메인별로 스키마(DB)를 분리했다. 같은 MySQL 인스턴스 안에서 스키마만
+> 나눈 것이며 물리 서버 분리는 아니다. 스키마를 건너뛰는 FK는 전부 제거됐고, 그 정합성은
+> 애플리케이션(Saga 호출 순서) 레벨로 넘어갔다. 상세 → [testing.md](../testing.md)는 아니고
+> `Todo.md` T-09 참고.
 
 ---
 
-## 1. 테이블 목록 및 역할
+## 1. 스키마 배치
+
+| 스키마(DB) | 소속 테이블 | 담당 도메인 패키지 |
+|---|---|---|
+| `screening_db` | `movie`, `theater`, `schedule` | `screening` |
+| `seat_db` | `seat`, `schedule_seat` | `seat` |
+| `booking_db` | `booking` | `booking` |
+| `payment_db` | `payment` | `payment` |
+
+## 2. 테이블 목록 및 역할
 
 | 테이블 | 역할 | 초기 관리 방식 |
 |--------|------|--------------|
@@ -20,7 +33,7 @@
 
 ---
 
-## 2. 테이블 상세
+## 3. 테이블 상세
 
 ### 2-1. `movie` — 영화
 
@@ -58,16 +71,21 @@ FK: 없음
 | 컬럼 | 타입 | 제약 | 설명 |
 |------|------|------|------|
 | `seat_id` | BIGINT | **PK**, AUTO_INCREMENT | 좌석 ID |
-| `theater_id` | BIGINT | NOT NULL, **FK** → `theater` | 어느 상영관 소속인지 |
+| `theater_id` | BIGINT | NOT NULL | 어느 상영관 소속인지 (`screening_db.theater` 참조, **FK 아님** — 스키마 분리, T-09) |
 | `row_num` | VARCHAR(5) | NOT NULL | 행 (A, B, C …) |
 | `col_num` | INT | NOT NULL | 열 (1, 2, 3 …) |
 | `created_at` | DATETIME | NOT NULL, DEFAULT NOW | 생성일시 |
 
 ```
 PK : seat_id
-FK : theater_id → theater(theater_id)
+FK : 없음 (theater_id는 screening_db.theater를 값으로만 참조. 스키마가 갈려서 DB가 검증 못 함 — T-09)
 UQ : (theater_id, row_num, col_num)  ← 같은 상영관에 동일 좌석 중복 방지
 ```
+
+> **⚠️ T-09(2026-07-21): `theater_id` FK 제거**
+> `seat`는 `seat_db`, `theater`는 `screening_db`로 스키마가 갈라지면서 MySQL이 스키마를 건너뛰는
+> FK를 지원하지 않아 제거했다. 지금은 시드 데이터로만 채워지고 런타임에 새로 INSERT하는 경로가
+> 없어 당장 위험은 없음 — `T-08`(관리자 CRUD) 착수 시 애플리케이션 레벨 검증 추가 예정.
 
 > **⚠️ `status` 컬럼이 없는 이유**
 > 같은 물리 좌석이 상영 A에서는 BOOKED, 상영 B에서는 AVAILABLE일 수 있다.
@@ -99,17 +117,21 @@ FK : movie_id   → movie(movie_id)
 
 | 컬럼 | 타입 | 제약 | 설명 |
 |------|------|------|------|
-| `schedule_id` | BIGINT | **PK(1/2)**, **FK** → `schedule` | 어느 상영 |
-| `seat_id` | BIGINT | **PK(2/2)**, **FK** → `seat` | 어느 좌석 |
+| `schedule_id` | BIGINT | **PK(1/2)** | 어느 상영 (`screening_db.schedule` 참조, **FK 아님** — 스키마 분리, T-09) |
+| `seat_id` | BIGINT | **PK(2/2)**, **FK** → `seat` | 어느 좌석 (같은 스키마라 FK 유지) |
 | `status` | ENUM | NOT NULL, DEFAULT 'AVAILABLE' | 좌석 상태 |
 | `version` | INT | NOT NULL, DEFAULT 0 | 충돌감지형(낙관적) 락 버전 (UPDATE 시마다 +1) |
 | `updated_at` | DATETIME | NOT NULL, ON UPDATE NOW | 상태 변경 시각 (감사용) |
 
 ```
 PK : (schedule_id, seat_id)  ← 복합 PK
-FK : schedule_id → schedule(schedule_id)
-     seat_id     → seat(seat_id)
+FK : seat_id → seat(seat_id)  (같은 스키마 seat_db 내부)
+     schedule_id는 FK 없음 — screening_db.schedule을 값으로만 참조 (T-09, 스키마 분리)
 ```
+
+> **⚠️ T-09(2026-07-21): `schedule_id` FK 제거**
+> `seat`와 같은 이유 — `schedule`이 `screening_db`로 넘어가면서 스키마를 건너뛰는 FK를 제거했다.
+> `seat_id` FK는 `seat`와 같은 스키마(`seat_db`)에 남아 있어 그대로 유지된다.
 
 **ENUM 값:**
 ```
@@ -180,8 +202,8 @@ A와 B는 조회 시점엔 똑같은 버전(0)을 봤지만, DB에 실제로 반
 | 컬럼 | 타입 | 제약 | 설명 |
 |------|------|------|------|
 | `booking_id` | BIGINT | **PK**, AUTO_INCREMENT | 예매 ID |
-| `schedule_id` | BIGINT | NOT NULL, **FK(복합)** → `schedule_seat` | 상영 스케줄 |
-| `seat_id` | BIGINT | NOT NULL, **FK(복합)** → `schedule_seat` | 좌석 |
+| `schedule_id` | BIGINT | NOT NULL | 상영 스케줄 (`seat_db.schedule_seat` 참조, **FK 아님** — 스키마 분리, T-09) |
+| `seat_id` | BIGINT | NOT NULL | 좌석 (`seat_db.schedule_seat` 참조, **FK 아님**) |
 | `user_id` | VARCHAR(50) | NOT NULL | 사용자 ID (현재: 파라미터 수신, 인증 없음) |
 | `status` | ENUM | NOT NULL, DEFAULT 'PENDING' | 예매 상태 |
 | `created_at` | DATETIME | NOT NULL, DEFAULT NOW | 생성일시 |
@@ -189,7 +211,7 @@ A와 B는 조회 시점엔 똑같은 버전(0)을 봤지만, DB에 실제로 반
 
 ```
 PK : booking_id
-FK : (schedule_id, seat_id) → schedule_seat(schedule_id, seat_id)  ← 복합 FK
+FK : 없음 (T-09) — (schedule_id, seat_id)는 seat_db.schedule_seat를 값으로만 참조
 ```
 
 **ENUM 값:**
@@ -200,10 +222,11 @@ FK : (schedule_id, seat_id) → schedule_seat(schedule_id, seat_id)  ← 복합 
 | `CONFIRMED` | 결제 성공 → 좌석 BOOKED | confirm() 후 갱신 |
 | `CANCELLED` | 결제 실패 or 보상 완료 → 좌석 AVAILABLE | release() 후 갱신 |
 
-> **⚠️ `(schedule_id, seat_id)` 복합 FK를 booking에 걸어두는 이유**
-> booking은 반드시 실제로 존재하는 `schedule_seat` 행을 참조해야 한다.
-> "존재하지 않는 스케줄·좌석 조합"에 예매가 생기는 것을 DB 레벨에서 원천 차단한다.
-> 어플리케이션 코드가 아닌 DB가 마지막 방어선 역할을 담당하는 구조.
+> **⚠️ T-09(2026-07-21): `(schedule_id, seat_id)` 복합 FK 제거**
+> 원래는 booking이 반드시 실제로 존재하는 `schedule_seat` 행을 참조하도록 DB가 마지막 방어선
+> 역할을 했다. `booking_db`/`seat_db`로 스키마가 갈리면서 이 복합 FK도 제거됐다 — 다만 Saga의
+> `hold()` 단계가 성공해야만(=schedule_seat가 실제로 HELD로 바뀌어야만) booking이 생성되는
+> 흐름이라, 애플리케이션 레벨에서 이미 같은 효과를 내고 있어 FK 제거의 실질적 영향은 적다.
 
 ---
 
@@ -212,7 +235,7 @@ FK : (schedule_id, seat_id) → schedule_seat(schedule_id, seat_id)  ← 복합 
 | 컬럼 | 타입 | 제약 | 설명 |
 |------|------|------|------|
 | `payment_id` | BIGINT | **PK**, AUTO_INCREMENT | 결제 ID |
-| `booking_id` | BIGINT | NOT NULL, **FK** → `booking` | 어느 예매의 결제 |
+| `booking_id` | BIGINT | NOT NULL | 어느 예매의 결제 (`booking_db.booking` 참조, **FK 아님** — 스키마 분리, T-09) |
 | `payment_key` | VARCHAR(100) | NOT NULL, **UNIQUE** | 멱등성 키 |
 | `amount` | INT | NOT NULL | 결제 금액(원) |
 | `status` | ENUM | NOT NULL, DEFAULT 'PENDING' | 결제 상태 |
@@ -221,9 +244,14 @@ FK : (schedule_id, seat_id) → schedule_seat(schedule_id, seat_id)  ← 복합 
 
 ```
 PK : payment_id
-FK : booking_id → booking(booking_id)
+FK : 없음 (T-09) — booking_id는 booking_db.booking을 값으로만 참조
 UQ : payment_key  ← 멱등성 보장
 ```
+
+> **⚠️ T-09(2026-07-21): `booking_id` FK 제거**
+> `payment_db`/`booking_db`로 스키마가 갈리면서 제거. Saga 순서상 `BookingService.insertPending()`이
+> 커밋된 뒤에만 `payment` INSERT가 일어나므로, booking_id는 항상 실제로 존재하는 값이 보장된다
+> (호출 순서 자체가 정합성을 담보 — 별도 검증 로직 불필요).
 
 **ENUM 값:**
 
@@ -240,36 +268,41 @@ UQ : payment_key  ← 멱등성 보장
 
 ---
 
-## 3. 전체 관계도
+## 4. 전체 관계도
+
+> **T-09 이후**: 점선(`┄`)으로 표시한 관계는 스키마 경계를 건너가서 더 이상 DB FK가 아니다.
+> 값으로만 참조하며, 정합성은 애플리케이션(Saga 호출 순서)이 책임진다.
 
 ```
+[screening_db]                    [seat_db]                [booking_db]      [payment_db]
+
 movie ──────────────────┐
                         │ 1:N
 theater ─────┬──────────▼──────────┐
              │ 1:N            schedule
-             │                     │ 1:N
-             └──────── seat ──┬────▼──────────────┐
-                       1:N   │              schedule_seat   ←── Saga 동시성 타깃
-                              │              (schedule_id,       status: AVAILABLE
+             │                     ┆ 1:N (FK 아님, T-09)
+             └┄┄┄┄┄┄┄ seat ──┬─────┆──────────────┐
+              (FK 아님, T-09) │              schedule_seat   ←── Saga 동시성 타깃
+                       1:N   │              (schedule_id,       status: AVAILABLE
                               │               seat_id) PK              │ HELD
-                              │                    │                   │ BOOKED
-                              │                    │ 복합 FK
+                              │                    ┆                   │ BOOKED
+                              │                    ┆ (FK 아님, T-09)
                               │               booking
-                              │                    │ 1:1
-                              └──────────────  payment
+                              │                    ┆ 1:1 (FK 아님, T-09)
+                              └┄┄┄┄┄┄┄┄┄┄┄┄┄┄  payment
                                                (payment_key UNIQUE)
 ```
 
 ---
 
-## 4. 핵심 설계 결정 요약
+## 5. 핵심 설계 결정 요약
 
 | 결정 | 이유 |
 |------|------|
 | `seat`에 `status` 없음 | 같은 물리 좌석이 상영마다 다른 상태를 가질 수 있어야 하므로 |
 | `schedule_seat` 복합 PK | 동시성 락(SELECT FOR UPDATE)의 범위를 "상영 × 좌석" 행 하나로 최소화 |
-| `booking`이 `schedule_seat`를 복합 FK 참조 | 존재하지 않는 조합의 예매를 DB 레벨에서 원천 차단 |
 | `payment_key` UNIQUE | DB가 멱등성의 마지막 방어선 역할. 중복 결제 시 DuplicateKeyException |
 | `status` 전부 ENUM | 유효하지 않은 상태값을 DB 레벨에서 거부. CHECK 제약 없이도 안전 |
 | `updated_at` ON UPDATE | 상태 변경 시각 자동 기록. 동시성 디버깅·HELD 타임아웃 확장 기반 |
 | `schedule_seat.version` | 충돌감지형(낙관적) 락의 비교 기준 — "이 행이 그 사이 바뀌었는가"를 순수하게 추적하는 범용 카운터. 상세 → 2-5절 |
+| 도메인별 스키마 분리 (T-09, 2026-07-21) | 도메인 간 FK 4개(`seat.theater_id`, `schedule_seat.schedule_id`, `booking→schedule_seat`, `payment.booking_id`) 제거. 정합성은 애플리케이션(Saga 호출 순서) 레벨로 이전. 상세 → `Todo.md` T-09 |
