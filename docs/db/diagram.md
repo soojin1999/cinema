@@ -86,63 +86,13 @@ erDiagram
 > 여전히 유효하지만(값으로 참조), MySQL이 보장해주지 않는다. `seat ||--o{ schedule_seat`(같은
 > `seat_db` 내부), `movie`/`theater` → `schedule`(같은 `screening_db` 내부)은 FK 그대로 유지.
 
----
-
-## 2. 관계 흐름 요약
-
-```
-[screening_db]                      [seat_db]              [booking_db]     [payment_db]
-
-  movie ──────┐
-              │ 1:N
-  theater ────┼──────── schedule
-     │        │              ┆ 1:N (FK 아님, T-09)
-     │ 1:N    │              ▼
-     └┄┄┄ seat ┄┄┄┄┄┄┄ schedule_seat  ← ⭐ 동시성 제어 타깃
-         (FK 아님, T-09) │              status: AVAILABLE / HELD / BOOKED
-                            │ 1:N (FK 아님, T-09)
-                            ▼
-                         booking        ← Saga 생성·업데이트
-                            │              status: PENDING / CONFIRMED / CANCELLED
-                            ┆ 1:1 (FK 아님, T-09)
-                            ▼
-                         payment        ← Mock 게이트웨이 대상
-                            payment_key UNIQUE (멱등성)
-                            status: PENDING / SUCCESS / FAILED
-```
+> 스키마별 테이블 배치(어느 테이블이 어느 DB에 있는지)는 표로 정리된 [db.md §1](db.md#1-스키마-배치)
+> 참고 — 위 ERD와 겹치지 않게 이 문서는 관계·상태 흐름 그림만 담는다.
+> PK/FK/UNIQUE 제약 상세, `schedule_seat`가 왜 이런 구조인지 같은 설계 이유는 [db.md](db.md) 참고.
 
 ---
 
-## 3. 핵심 포인트 한눈에 보기
-
-### schedule_seat — 이 프로젝트의 중심
-
-```
-┌─────────────────────────────────────────────┐
-│              schedule_seat                  │
-│                                             │
-│  PK  schedule_id  (screening_db 참조, FK 아님, T-09)│
-│  PK  seat_id     ──FK──▶ seat (같은 seat_db) │
-│                                             │
-│  status  AVAILABLE ──hold()──▶ HELD         │
-│                      HELD ──confirm()──▶ BOOKED  │
-│                      HELD ──release()──▶ AVAILABLE │
-└─────────────────────────────────────────────┘
-         ┆
-         ┆ (schedule_id + seat_id, FK 아님 — T-09, booking_db로 스키마 분리)
-         ┆
-    booking (schedule_id, seat_id, status...)
-```
-
-- `schedule_id`와 `seat_id` 두 컬럼이 **동시에 PK**. `seat_id`만 FK(같은 스키마 `seat_db`), `schedule_id`는
-  `screening_db.schedule`을 값으로만 참조 (T-09)
-- 이 행 하나가 `SELECT ... FOR UPDATE` 락의 최소 단위
-- `booking`은 더 이상 이 복합키를 FK로 참조하지 않는다(T-09) — 존재하지 않는 조합의 예매를 막는 역할은
-  Saga의 `hold()` 성공 여부(애플리케이션 레벨)로 이전됨
-
----
-
-### ENUM 상태 흐름
+## 2. ENUM 상태 흐름
 
 ```
 [schedule_seat.status]           [booking.status]          [payment.status]
@@ -161,16 +111,3 @@ AVAILABLE                        (아직 없음)                (아직 없음)
  BOOKED         ────────────▶  CONFIRMED    AVAILABLE   CANCELLED ◀───────┘
 ```
 
----
-
-## 4. 테이블별 키 제약 요약
-
-| 테이블 | 스키마 | PK | FK | UNIQUE |
-|--------|--------|----|----|--------|
-| `movie` | `screening_db` | `movie_id` | — | — |
-| `theater` | `screening_db` | `theater_id` | — | — |
-| `seat` | `seat_db` | `seat_id` | 없음 (`theater_id`는 값 참조, FK 아님 — T-09) | `(theater_id, row_num, col_num)` |
-| `schedule` | `screening_db` | `schedule_id` | `movie_id`, `theater_id` | — |
-| `schedule_seat` | `seat_db` | `(schedule_id, seat_id)` 복합 | `seat_id`만 (`schedule_id`는 값 참조, FK 아님 — T-09) | — (`version`은 충돌감지형/낙관적 락 카운터) |
-| `booking` | `booking_db` | `booking_id` | 없음 (`(schedule_id, seat_id)`는 값 참조, FK 아님 — T-09) | — |
-| `payment` | `payment_db` | `payment_id` | 없음 (`booking_id`는 값 참조, FK 아님 — T-09) | `payment_key` |

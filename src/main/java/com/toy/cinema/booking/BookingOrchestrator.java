@@ -62,7 +62,13 @@ public class BookingOrchestrator {
             bookingService.cancel(bookingId);
             return bookingId;
         } catch (Exception e) {
-            // 예측 외 기술 오류 → 보상 없이 위로 던짐. 좌석은 HELD 잔류 (추후 HELD 타임아웃으로 회수, Todo.md T-04)
+            // 예측 외 기술 오류 → 원칙적으로 보상 없이 위로 던짐, 좌석 HELD 잔류 (Todo.md T-04, 배치가 회수)
+            // 단, 결제가 실제로는 성공했는데 confirm 단계만 실패한 경우는 그 자리에서 확정 — 확실한 경우만 즉시 처리
+            try {
+                if(tryConfirmIfPaid(bookingId, scheduleId, seatId)) return bookingId;
+            } catch(Exception recoveryEx) {
+                log.warn("결제 상태 확인/재조정 실패. bookingId={}", bookingId, recoveryEx);
+            }
             throw e;
         }
 
@@ -86,15 +92,24 @@ public class BookingOrchestrator {
     public BookingResult getResult(Long bookingId) {
         Booking booking = bookingService.findById(bookingId);
 
-        if (booking.status() == BookingStatus.PENDING) {
-            PaymentStatus paymentStatus = paymentFacade.findStatusByBookingId(bookingId);
-            if (paymentStatus == PaymentStatus.SUCCESS) {
-                seatFacade.confirm(new SeatConfirmCommand(booking.scheduleId(), booking.seatId()));
-                bookingService.confirm(bookingId);
-                return new BookingResult(bookingId, BookingStatus.CONFIRMED);
-            }
-        }
-
+        if(booking.status() == BookingStatus.PENDING && tryConfirmIfPaid(bookingId, booking.scheduleId(), booking.seatId()))
+            return new BookingResult(bookingId, BookingStatus.CONFIRMED);
         return new BookingResult(bookingId, booking.status());
+    }
+
+    /**
+     * 결제를 했다면 booking (예약 상태), schedule_seat(좌석 상태) 업데이트
+     * @param bookingId
+     * @param scheduleId
+     * @param seatId
+     * @return
+     */
+    private boolean tryConfirmIfPaid(Long bookingId, Long scheduleId, Long seatId) {
+        if(paymentFacade.findStatusByBookingId(bookingId) == PaymentStatus.SUCCESS) {
+            seatFacade.confirm(new SeatConfirmCommand(scheduleId, seatId));
+            bookingService.confirm(bookingId);
+            return true;
+        }
+        return false;
     }
 }

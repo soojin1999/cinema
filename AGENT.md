@@ -191,7 +191,7 @@ GET /bookings/{bookingId}
 
 - `schedule_seat`에 `version INT NOT NULL DEFAULT 0` 컬럼 추가 (충돌감지형 락의 비교 기준). 상세 → [docs/db/db.md](docs/db/db.md)
 - `confirm()`/`release()`는 락 종류를 나누지 않는다 — `hold()`로 이미 좌석을 독점한 뒤에만 호출되므로 경합이 없음. 단순 조건부 UPDATE(`updateStatus`)만 사용
-- 충돌감지형 락에서 충돌(UPDATE 영향 행 0) 발생 시 `SeatConflictException` 발생. 재시도 로직은 미결 (Todo.md T-06)
+- 충돌감지형 락에서 충돌(UPDATE 영향 행 0) 발생 시 `SeatConflictException` 발생. **재시도 로직 없이 그대로 예외를 던진다 (확정, Todo.md T-06, 2026-07-24)** — 좌석 hold는 배타적 자원이라 이 충돌은 기술적 노이즈가 아니라 "이미 다른 사람이 가져간" 진짜 비즈니스 결과이기 때문. 재시도해도 재조회 시 이미 `HELD`/`BOOKED`라 결국 `SeatNotAvailableException`으로 귀결되므로 DB 왕복만 늘어남
 
 ---
 
@@ -227,7 +227,7 @@ GET /bookings/{bookingId}
 | 변경 영역 | 갱신 파일 |
 |----------|---------|
 | DB 구조·컬럼·키 | `docs/db/db.md` + `docs/db/diagram.md` |
-| 아키텍처·Saga·트랜잭션 | `docs/backend.md` |
+| 아키텍처·Saga·트랜잭션 | `docs/backend/backend.md` (+ 클래스/패키지 다이어그램은 `docs/backend/diagram.md`) |
 | 화면·라우팅 | `docs/frontend.md` |
 | 테스트 코드 추가·범위 변경 | `docs/testing.md` |
 | 파일 상태·전체 방향·세션 시작 지점 | [STATUS.md](STATUS.md) |

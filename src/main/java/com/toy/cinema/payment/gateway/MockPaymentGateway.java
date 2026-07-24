@@ -6,9 +6,9 @@ import org.springframework.stereotype.Component;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
- * 실제 결제 PG 구현체 — 여기서 결제 모듈을 흉내냄 (backend.md §7).
+ * 실제 결제 PG 구현체 — 여기서 결제 모듈을 흉내냄 (docs/backend/backend.md §7).
  * 20% 확률로 실패, 3초 인위적 지연 — 이 지연이 있어야 "결제 중엔 DB 락을 물고 있으면 안 된다"는
- * Saga 설계 이유(backend.md §5)가 실제로 체감된다.
+ * Saga 설계 이유(docs/backend/backend.md §5)가 실제로 체감된다.
  */
 @Slf4j
 @Component

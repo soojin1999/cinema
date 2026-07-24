@@ -16,13 +16,6 @@
 
 ## 🟡 해당 구현 시점에 논의 (그때 가서 결정)
 
-### T-06. 충돌감지형(낙관적) 락 충돌(`SeatConflictException`) 재시도 로직
-- **논제**: `holdOptimistic()`에서 `updateStatusWithVersion` 영향받은 행이 0이라(=충돌) `SeatConflictException`이 나면, 그 자리에서 재시도할 것인가
-  - 후보 A: `SeatService` 안에서 N회 재시도(재조회 → 재시도) 후 그래도 실패하면 예외 던짐
-  - 후보 B: 재시도 없이 그대로 예외 던짐 (지금 상태) — 호출자가 판단하게 둠
-- **결정 시점**: `SeatService.holdOptimistic()` 기본 골격 완성 후
-- **참고**: `SeatNotAvailableException`은 재시도 대상 아님 (진짜로 자리가 없는 것). `SeatConflictException`만 재시도 후보
-
 ### T-04. HELD 타임아웃 처리
 - **논제**: 결제 도중 브라우저 종료 등으로 좌석이 HELD에 영구 잔류하는 경우 어떻게 처리할 것인가
   - 후보 A: Spring `@Scheduled`로 주기적으로 만료된 HELD 행 스캔 → AVAILABLE 복원
@@ -111,3 +104,4 @@
 | - | 최종 목표 범위 확정 | 학습 페이즈(경계·Saga·테스트) 이후 최종 목표는 실제 운영 가능한 영화관 예매 앱 — 극장/영화/스케줄 등록, 좌석 배치 커스터마이징. 베이스는 여전히 MSA 구조 학습. 상세 → README.md "최종 목표" | 2026-07-18 |
 | - | DB 스키마 분리 방향 | "MSA 구조를 제대로 공부하려면 데이터 레벨 경계도 지금 겪어보는 게 낫다"고 판단 — 도메인별 스키마 분리로 방향 확정 (물리 서버 분리는 아님, 범위 밖 유지). 지금 규모가 작을 때 하는 게 관리자 CRUD까지 붙은 뒤보다 훨씬 저렴하다는 게 근거. 착수 시점은 T-09에서 별도 논의 | 2026-07-18 |
 | T-09 | DB 스키마 분리 실행 | `screening_db`/`seat_db`/`booking_db`/`payment_db` 4개 스키마로 분리, 도메인 간 FK 4개(`seat.theater_id`, `schedule_seat.schedule_id`, `booking→schedule_seat`, `payment.booking_id`) 제거하고 애플리케이션(Saga 호출 순서) 레벨 정합성으로 대체. `config` 패키지에 도메인별 `DataSource`+`SqlSessionFactory`+`@MapperScan(sqlSessionFactoryRef=...)` 4벌 구성, `CinemaApplication`의 전역 `@MapperScan` 제거. FK 제거로 생기는 위험은 T-08(관리자 CRUD) 착수 시점에 애플리케이션 레벨 검증 추가하기로 결정(지금은 시드 데이터만 채워지고 런타임 위험 없음). 실행 후 `docker compose down -v`로 볼륨 재초기화 + 전체 Saga 흐름(hold→pay→confirm, 3개 스키마 관통) 실제 HTTP 검증 완료 | 2026-07-21 |
+| T-06 | 낙관적 락 충돌(`SeatConflictException`) 재시도 로직 | 후보 B(재시도 없이 그대로 예외 던짐)로 확정, 재시도 로직 추가 안 함. 이유: 좌석 hold는 배타적 자원이라 `updateStatusWithVersion` 영향 행 0(=충돌)은 기술적 노이즈가 아니라 "이미 다른 사람이 가져간" 진짜 비즈니스 결과 — 재시도해도 재조회 시 이미 `HELD`/`BOOKED`라 결국 `SeatNotAvailableException`으로 귀결되므로 DB 왕복만 늘어남 | 2026-07-24 |

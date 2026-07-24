@@ -77,7 +77,8 @@ com.toy.cinema
 상세 설계 문서:
 - [docs/db/db.md](docs/db/db.md) — DB 테이블 설계
 - [docs/db/diagram.md](docs/db/diagram.md) — ERD·상태 흐름 다이어그램
-- [docs/backend.md](docs/backend.md) — 아키텍처·Saga 흐름
+- [docs/backend/backend.md](docs/backend/backend.md) — 아키텍처·Saga 흐름
+- [docs/backend/diagram.md](docs/backend/diagram.md) — 클래스·패키지 다이어그램
 - [docs/frontend.md](docs/frontend.md) — 화면 설계
 - [docs/testing.md](docs/testing.md) — 테스트 커버리지 현황 (JUnit/Mockito)
 

@@ -25,6 +25,7 @@ public class PaymentFacadeImpl implements PaymentFacade {
 
     @Override
     public void pay(PaymentRequest request) {
+        //결제 시작 row insert
         boolean shouldCallGateway = paymentService.insertPending(request);
         if (!shouldCallGateway) {
             return; // 이미 SUCCESS로 끝난 결제와 같은 요청 (멱등)
@@ -33,7 +34,7 @@ public class PaymentFacadeImpl implements PaymentFacade {
         //결제 준비 완료 => 실제 결제
         PgChargeResult result = paymentGateway.pay(new PgChargeRequest(request.amount(), request.paymentKey()));
 
-        //결제 상태를 확인하고 insert한 결제정보가 정상적으로 끝났는지, 실패했는지 마킹
+        //결제 상태를 확인하고 insert한 결제정보가 정상적으로 끝났으면 상태 업데이트, 실패했는지 마킹
         if (result.success()) {
             paymentService.markSuccess(request.paymentKey());
         } else {

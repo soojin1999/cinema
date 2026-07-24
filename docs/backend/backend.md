@@ -4,7 +4,7 @@
 > **원칙**: 기술 레이어(controller/service/mapper)가 아닌 **도메인**으로 먼저 나눈다.
 > **T-09(2026-07-21)**: DB를 도메인별 스키마 4개로 분리하고 `config` 패키지에 도메인별
 > `DataSource`+`SqlSessionFactory`+`@MapperScan` 구성을 추가했다. 상세 → §2 `config` 패키지,
-> [docs/db/db.md](db/db.md).
+> [docs/db/db.md](../db/db.md).
 
 ---
 
@@ -23,6 +23,9 @@
 ---
 
 ## 2. 패키지 구조
+
+> 클래스 다이어그램(메서드 시그니처 포함)·패키지 다이어그램은 [docs/backend/diagram.md](diagram.md) 참고 —
+> 이 문서는 각 클래스가 "왜" 그 자리에 있는지 텍스트로 설명하고, 그림은 diagram.md 하나로 모아둔다.
 
 ```
 com.toy.cinema
@@ -326,6 +329,6 @@ public class TossPaymentGateway implements PaymentGateway { ... }
 | `BookingController` (POST/GET 라우팅) | ✅ 완료 |
 | 실제 HTTP 요청으로 Saga 흐름 테스트 | ✅ 완료 (성공/보상/재조정 경로 curl로 검증, 2026-07-17) |
 | `screening` 패키지 (ScheduleController, ScreeningFacade+Impl, ScreeningMapper) | ✅ 완료 (2026-07-18) |
-| `BookingController`/`ScheduleController` REST 전환 + `GlobalExceptionHandler` | ✅ 완료 — Thymeleaf 제거, JSON API + 정적 HTML/JS로 전환 (2026-07-18, [STATUS.md](../STATUS.md) 참고) |
-| 화면(정적 HTML, `seats.html` polling 포함) | ✅ 완료 — [docs/frontend.md](frontend.md) 참고 |
-| p6spy 개발용 SQL 로깅 (`common/logging/SqlLogFormat`) | ✅ 완료 — 파라미터 치환된 완성 SQL 콘솔 출력 (2026-07-18, [STATUS.md](../STATUS.md) 트러블슈팅 기록 참고) |
+| `BookingController`/`ScheduleController` REST 전환 + `GlobalExceptionHandler` | ✅ 완료 — Thymeleaf 제거, JSON API + 정적 HTML/JS로 전환 (2026-07-18, [STATUS.md](../../STATUS.md) 참고) |
+| 화면(정적 HTML, `seats.html` polling 포함) | ✅ 완료 — [docs/frontend.md](../frontend.md) 참고 |
+| p6spy 개발용 SQL 로깅 (`common/logging/SqlLogFormat`) | ✅ 완료 — 파라미터 치환된 완성 SQL 콘솔 출력 (2026-07-18, [STATUS.md](../../STATUS.md) 트러블슈팅 기록 참고) |

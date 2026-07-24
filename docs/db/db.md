@@ -270,28 +270,8 @@ UQ : payment_key  ← 멱등성 보장
 
 ## 4. 전체 관계도
 
-> **T-09 이후**: 점선(`┄`)으로 표시한 관계는 스키마 경계를 건너가서 더 이상 DB FK가 아니다.
-> 값으로만 참조하며, 정합성은 애플리케이션(Saga 호출 순서)이 책임진다.
-
-```
-[screening_db]                    [seat_db]                [booking_db]      [payment_db]
-
-movie ──────────────────┐
-                        │ 1:N
-theater ─────┬──────────▼──────────┐
-             │ 1:N            schedule
-             │                     ┆ 1:N (FK 아님, T-09)
-             └┄┄┄┄┄┄┄ seat ──┬─────┆──────────────┐
-              (FK 아님, T-09) │              schedule_seat   ←── Saga 동시성 타깃
-                       1:N   │              (schedule_id,       status: AVAILABLE
-                              │               seat_id) PK              │ HELD
-                              │                    ┆                   │ BOOKED
-                              │                    ┆ (FK 아님, T-09)
-                              │               booking
-                              │                    ┆ 1:1 (FK 아님, T-09)
-                              └┄┄┄┄┄┄┄┄┄┄┄┄┄┄  payment
-                                               (payment_key UNIQUE)
-```
+테이블 간 관계 시각화(ERD, 스키마별 배치도)는 [diagram.md](diagram.md) 참고 — 이 문서는 컬럼·제약·설계
+이유 같은 상세 레퍼런스에 집중하고, 그림은 diagram.md 하나로 모아둔다.
 
 ---
 

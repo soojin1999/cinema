@@ -2,7 +2,10 @@
 
 > **최종 수정**: 2026-07-18 (screening 패키지 + REST 전환 반영)
 > **목적**: 실제로 만든 파일들이 서로를 어떻게 호출하는지 시퀀스 다이어그램으로 추적한다.
-> 설계 이유(왜 이렇게 만들었는가)는 [backend.md](backend.md) 참고 — 이 문서는 "무엇이 무엇을 부르는가"에만 집중한다.
+> 설계 이유(왜 이렇게 만들었는가)는 [backend/backend.md](backend/backend.md) 참고 — 이 문서는 "무엇이 무엇을 부르는가"에만 집중한다.
+> **구조(정적) vs 흐름(동적)**: 인터페이스/구현체 경계나 도메인 간 의존 "구조", 클래스/패키지 다이어그램만 보고 싶으면
+> [backend/diagram.md](backend/diagram.md) 참고 — 이 문서(§1 이하)는 HTTP 라우팅·DB 타깃까지 포함한 실제 호출
+> 경로와 시간 순서(시퀀스)에 집중한다.
 > **갱신 규칙**: 도메인 하나가 완성될 때마다 사용자가 말하지 않아도 자동으로 이 문서를 갱신한다 (AGENT.md §7).
 > 모든 Controller는 `@RestController`다 — 뷰를 만들지 않고 JSON만 응답한다. 화면(정적 HTML/JS)이 fetch로 호출한다.
 
@@ -48,14 +51,14 @@ graph TD
 ```
 
 백엔드·프론트·에러 처리까지 전부 연결되어 브라우저로 목록→좌석선택→예매→결과 전체 플로우 실제 검증 완료 (2026-07-18).
-남은 건 `T-04`(HELD 타임아웃), `T-06`(낙관적 락 충돌 재시도)뿐.
+남은 건 `T-04`(HELD 타임아웃)뿐 — `T-06`(낙관적 락 충돌 재시도)은 재시도 없이 그대로 예외를 던지는 것으로 결정 완료.
 
 ---
 
 ## 2. `screening` (스케줄 탐색) ✅ 완성
 
 Saga에 참여하지 않는 순수 조회. `ScheduleController`도 다른 도메인과 동일하게 `ScreeningFacade`를 거쳐서만
-`ScreeningMapper`에 닿는다 — 상태 전이 로직이 없어 Service 계층만 생략했다 (docs/backend.md §2 참고).
+`ScreeningMapper`에 닿는다 — 상태 전이 로직이 없어 Service 계층만 생략했다 (docs/backend/backend.md §2 참고).
 
 ```mermaid
 sequenceDiagram

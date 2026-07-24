@@ -20,11 +20,14 @@ booking)에서 조용히 무시되고 있었음. `config` 패키지 4개 클래�
 `T-09`(DB 스키마 분리)는 지난 세션에 완료 — `screening_db`/`seat_db`/`booking_db`/`payment_db` 4개 스키마, 도메인 간
 FK 4개 제거, `config` 패키지 도메인별 `DataSource`+`SqlSessionFactory`+`@MapperScan` 구성. 상세 → `docs/db/db.md`.
 
+**T-06 결정 완료 (2026-07-24)**: 낙관적 락 충돌(`SeatConflictException`) 재시도 로직은 후보 B(재시도 없이 그대로 예외)로
+확정. 좌석 hold는 배타적 자원이라 충돌 = 진짜 비즈니스 결과(이미 남이 가져감)라서 재시도해도 결국 `SeatNotAvailableException`으로
+귀결됨 — 코드 변경 없음, 지금 구현이 그대로 최종 형태. 상세 → `Todo.md` 완료된 논제 표.
+
 다음 세션 우선순위:
 
 1. **`T-10` 계속** — 충돌감지형(낙관적) 락 쪽 동시성 테스트("기다리지 않고 즉시 충돌") 추가. 그다음 `SeatService`의 `confirm()`/`release()`/`getSeatGrid()`, 다른 도메인(`PaymentService` 등)으로 Mockito 테스트 범위 확장
 2. `T-04` — HELD 타임아웃 배치
-3. `T-06` — `SeatConflictException`(낙관적 락 충돌) 재시도 로직
 
 ## 완료된 것
 
@@ -64,7 +67,6 @@ FK 4개 제거, `config` 패키지 도메인별 `DataSource`+`SqlSessionFactory`
                           패키지 4개 + Seat/Payment/BookingService). 충돌감지형 락 쪽은 아직 미작성 (2026-07-21)
 
 ⬜ T-04 HELD 타임아웃 배치
-⬜ T-06 SeatConflictException 재시도 로직
 ⬜ (사소, 우선순위 낮음) 로그 파일에 찍히는 한글 예외 메시지가 콘솔 출력 경로에서 일부 깨짐 — DB 저장값/HTTP JSON 응답엔 영향 없음, 순수 콘솔 표시 문제로 추정. 다시 볼 때 아래 "오늘 겪은 인프라 문제" 참고
 ```
 
