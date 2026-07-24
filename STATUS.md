@@ -24,10 +24,14 @@ FK 4개 제거, `config` 패키지 도메인별 `DataSource`+`SqlSessionFactory`
 확정. 좌석 hold는 배타적 자원이라 충돌 = 진짜 비즈니스 결과(이미 남이 가져감)라서 재시도해도 결국 `SeatNotAvailableException`으로
 귀결됨 — 코드 변경 없음, 지금 구현이 그대로 최종 형태. 상세 → `Todo.md` 완료된 논제 표.
 
+**T-04 구현 완료 (2026-07-24)**: `BookingTimeoutBatch` 신설 — 방치된 `PENDING` booking을 booking 도메인이 스캔해서
+회수한다. 상세 → 아래 "오늘(2026-07-24) T-04" 절, `Todo.md` 완료된 논제 표. **`@Scheduled`는 아직 주석 처리 상태** —
+`POST /admin/batch/reconcile-pending-bookings`로 수동 트리거만 되는 중. 실제 자동 주기 실행 전환은 다음 세션 과제.
+
 다음 세션 우선순위:
 
 1. **`T-10` 계속** — 충돌감지형(낙관적) 락 쪽 동시성 테스트("기다리지 않고 즉시 충돌") 추가. 그다음 `SeatService`의 `confirm()`/`release()`/`getSeatGrid()`, 다른 도메인(`PaymentService` 등)으로 Mockito 테스트 범위 확장
-2. `T-04` — HELD 타임아웃 배치
+2. `T-04` 마무리 — `BookingTimeoutBatch` 실제 DB로 수동 트리거 검증(아직 브라우저/curl 검증 안 함), 검증되면 `@Scheduled` 주석 해제, 이후 JUnit 테스트 추가(T-10 범위에 편입 가능)
 
 ## 완료된 것
 
@@ -65,10 +69,43 @@ FK 4개 제거, `config` 패키지 도메인별 `DataSource`+`SqlSessionFactory`
 ✅ T-10 4단계 착수 + 버그 수정  SeatServiceConcurrencyTest — 대기형(비관적) 락 동시성 테스트(스레드 2개). 처음 돌렸을 때
                           PlatformTransactionManager 빈 부재로 @Transactional 전체가 무시되던 버그 발견·수정(config
                           패키지 4개 + Seat/Payment/BookingService). 충돌감지형 락 쪽은 아직 미작성 (2026-07-21)
+✅ T-04 HELD 타임아웃 배치   BookingTimeoutBatch(+ 수동 트리거용 BookingTimeoutBatchController) 신설. booking 도메인이
+                          스캔 주도(findStalePending), BookingOrchestrator.tryConfirmIfPaid 재사용. 상세 → 아래
+                          "오늘(2026-07-24) T-04" 절. @Scheduled는 주석 상태, 실제 DB 검증·자동화는 다음 세션 (2026-07-24)
 
-⬜ T-04 HELD 타임아웃 배치
 ⬜ (사소, 우선순위 낮음) 로그 파일에 찍히는 한글 예외 메시지가 콘솔 출력 경로에서 일부 깨짐 — DB 저장값/HTTP JSON 응답엔 영향 없음, 순수 콘솔 표시 문제로 추정. 다시 볼 때 아래 "오늘 겪은 인프라 문제" 참고
 ```
+
+## 오늘(2026-07-24) T-04 HELD 타임아웃 배치 구현
+
+`BookingOrchestrator.reserve()`가 `catch(Exception e)`(예측 외 기술 오류)로 빠지면 좌석은 `HELD`, booking은
+`PENDING`으로 잔류하는데, 지금까지는 이걸 회수할 방법이 없었다. 이번 세션에 T-04를 확정하고 실제로 구현했다.
+
+**구현 순서**:
+1. `catch(Exception e)` 안에서 `paymentFacade.findStatusByBookingId()`로 즉시 재조정을 시도하는 코드를 먼저 짜봤다가
+   (사용자가 직접 IDE에서 수정), 코드 리뷰 과정에서 진짜 성공 케이스인데도 `throw e`까지 흘러가서 클라이언트에
+   에러 응답이 가는 버그, 그리고 재조정 시도 자체가 실패하면 원래 예외가 사라지는 문제를 잡아 수정 — `return bookingId`로
+   성공 분기를 끊고, 재조정 시도를 `try/catch`로 감싸 실패해도 원래 예외가 보존되게 함
+2. `getResult()`(지연 재조정)와 로직이 겹쳐서 `tryConfirmIfPaid(bookingId, scheduleId, seatId)` private 메서드로 추출.
+   이 과정에서 `&&` 피연산자 순서 버그(단축 평가로 `booking.status()==PENDING` 체크보다 `tryConfirmIfPaid` 부수효과가
+   먼저 실행돼서, 이미 `CONFIRMED`/`CANCELLED`된 booking도 GET할 때마다 불필요하게 재확정 시도하던 문제)도 잡아 수정
+3. T-04 본체: `BookingMapper.findStalePending(cutoff)` 신설(`status='PENDING' AND created_at < cutoff`, 새 컬럼 없이
+   기존 `created_at` 재사용) → `BookingService.findStalePending()` → `BookingTimeoutBatch.reconcilePendingBookings()`가
+   각 stale booking마다 `tryConfirmIfPaid()`를 먼저 시도(payment가 실제로는 SUCCESS인데 confirm만 못한 경우 구제) →
+   그래도 안 되면 `seatFacade.release()` + `bookingService.cancel()`
+4. `tryConfirmIfPaid`를 `private` → package-private으로 완화해서 `BookingTimeoutBatch`(같은 `booking` 패키지)가 재사용 —
+   `public`으로 완전히 열면 다른 도메인이 `BookingOrchestrator`를 직접 주입받아 호출할 길이 생겨 AGENT.md §1 "경계는
+   Facade만" 규칙이 깨질 수 있어서 package-private 유지로 결정
+
+**설계 결정**: 스캔은 booking 도메인이 주도한다 — `schedule_seat`엔 `booking_id`가 없어서(T-09, 도메인 간 FK 제거)
+seat 쪽만 봐서는 "어느 booking과 연결된 HELD인지" 알 수 없기 때문. `TIMEOUT_MINUTES=1`(분)로 테스트하기 편한 값을 선택
+(실무라면 더 길게 잡아야 하지만, `MockPaymentGateway`가 3초 지연이라 1분이면 정상 결제와 절대 안 겹침).
+
+**배치 주기는 아직 자동화 안 함**: `@Scheduled(fixedDelay = 30_000)`은 코드에 주석으로만 남겨뒀다 — 실제로 주기
+실행시키기 전에 먼저 수동으로 동작을 확인하고 싶어서. 대신 `POST /admin/batch/reconcile-pending-bookings`
+(`BookingTimeoutBatchController`)로 원할 때 직접 호출. `CinemaApplication`엔 `@EnableScheduling`만 미리 켜둠 —
+나중에 `@Scheduled` 주석 풀 때 이거 빠뜨리는 실수 방지용. **아직 실제 DB로 검증은 안 했고, JUnit 테스트도 없음** —
+둘 다 다음 세션 과제 (T-10 4단계 범위에 자연스럽게 편입 가능).
 
 ## 오늘(2026-07-18) 아키텍처 변경 — Thymeleaf → REST API + 정적 HTML/JS
 

@@ -41,4 +41,10 @@
         WHERE booking_id = #{bookingId}
     </select>
 
+    <select id="findStalePending" resultMap="bookingResultMap">
+        SELECT booking_id, schedule_id, seat_id, user_id, status, created_at, updated_at
+        FROM booking
+        WHERE status = 'PENDING' AND created_at &lt; #{cutoff}
+    </select>
+
 </mapper>

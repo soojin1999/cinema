@@ -34,18 +34,25 @@ classDiagram
     class BookingOrchestrator {
         +reserve(ReservationRequest) Long
         +getResult(Long bookingId) BookingResult
-        -tryConfirmIfPaid(Long bookingId, Long scheduleId, Long seatId) boolean
+        ~tryConfirmIfPaid(Long bookingId, Long scheduleId, Long seatId) boolean
     }
     class BookingService {
         +insertPending(InsertBookingParams) Long
         +confirm(Long bookingId)
         +cancel(Long bookingId)
         +findById(Long bookingId) Booking
+        +findStalePending(LocalDateTime cutoff) List~Booking~
     }
     class LockType {
         <<enumeration>>
         PESSIMISTIC
         OPTIMISTIC
+    }
+    class BookingTimeoutBatch {
+        +reconcilePendingBookings()
+    }
+    class BookingTimeoutBatchController {
+        +trigger()
     }
 
     BookingController --> BookingFacade
@@ -53,7 +60,14 @@ classDiagram
     BookingFacadeImpl --> BookingOrchestrator
     BookingOrchestrator --> BookingService
     BookingOrchestrator ..> LockType : lockType 분기
+    BookingTimeoutBatchController --> BookingTimeoutBatch
+    BookingTimeoutBatch --> BookingService : findStalePending/cancel
+    BookingTimeoutBatch --> BookingOrchestrator : tryConfirmIfPaid 재사용
 ```
+
+> `~`(package-private)로 표시된 `tryConfirmIfPaid`는 같은 `booking` 패키지 안에서만 호출 가능 —
+> `BookingTimeoutBatch`가 이 접근성 덕분에 재사용한다. `public`이었다면 다른 도메인이 `BookingOrchestrator`를
+> 직접 주입받아 호출할 길이 열려 AGENT.md §1 "경계는 Facade만" 규칙이 깨질 수 있었다 (T-04, 2026-07-24).
 
 ### seat 도메인
 
@@ -150,14 +164,15 @@ classDiagram
 
 ### 도메인 간 의존 관계 (개요)
 
-> 위 5개 다이어그램에서 뺀 **cross-domain 화살표만** 모았다 — `BookingOrchestrator`/`ScheduleController`가
-> 다른 도메인의 `Facade` 인터페이스만 아는 모습(AGENT.md §1 "경계는 Facade만")이 여기서 드러난다.
+> 위 5개 다이어그램에서 뺀 **cross-domain 화살표만** 모았다 — `BookingOrchestrator`/`ScheduleController`/
+> `BookingTimeoutBatch`가 다른 도메인의 `Facade` 인터페이스만 아는 모습(AGENT.md §1 "경계는 Facade만")이 여기서 드러난다.
 
 ```mermaid
 classDiagram
     direction TB
     class BookingOrchestrator
     class ScheduleController
+    class BookingTimeoutBatch
     class SeatFacade { <<interface>> }
     class PaymentFacade { <<interface>> }
     class NotificationFacade { <<interface>> }
@@ -168,14 +183,17 @@ classDiagram
     BookingOrchestrator --> NotificationFacade : send
     ScheduleController --> ScreeningFacade
     ScheduleController --> SeatFacade : getSeatGrid
+    BookingTimeoutBatch --> SeatFacade : release
 ```
 
 한눈에 보이는 것: (1) 모든 도메인이 `Facade`(인터페이스) + `Impl` 쌍으로 돼 있고 다른 도메인은 인터페이스만 의존 —
 `BookingOrchestrator`가 `SeatFacadeImpl`이 아니라 `SeatFacade`만 아는 게 AGENT.md §1 "경계는 Facade만" 규칙이 코드로
 드러난 모습. (2) `PaymentFacadeImpl`도 `PaymentGateway` 인터페이스만 의존하고 `MockPaymentGateway`는 그 구현체 중
 하나일 뿐 — 나중에 실 PG로 교체해도 `PaymentFacadeImpl` 코드는 안 바뀜. (3) `-`로 표시된 `private` 메서드
-(`BookingOrchestrator.tryConfirmIfPaid`, `PaymentService.handleDuplicatePaymentKey`)는 같은 클래스 안에서만
-쓰는 내부 헬퍼라는 뜻 — 다른 클래스가 호출할 수 없다.
+(`PaymentService.handleDuplicatePaymentKey`)는 같은 클래스 안에서만 쓰는 내부 헬퍼, `~`로 표시된
+`BookingOrchestrator.tryConfirmIfPaid`는 package-private이라 같은 `booking` 패키지의 `BookingTimeoutBatch`까지만
+호출 가능하다는 뜻이다 (T-04, 2026-07-24). (4) `BookingTimeoutBatch`도 Saga 오케스트레이터와 동일하게 `SeatFacade`를
+거쳐서만 좌석을 건드린다 — 배치라고 예외는 없다.
 
 ---
 

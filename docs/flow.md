@@ -1,6 +1,6 @@
 # 코드 흐름도
 
-> **최종 수정**: 2026-07-18 (screening 패키지 + REST 전환 반영)
+> **최종 수정**: 2026-07-24 (T-04 `BookingTimeoutBatch` 추가)
 > **목적**: 실제로 만든 파일들이 서로를 어떻게 호출하는지 시퀀스 다이어그램으로 추적한다.
 > 설계 이유(왜 이렇게 만들었는가)는 [backend/backend.md](backend/backend.md) 참고 — 이 문서는 "무엇이 무엇을 부르는가"에만 집중한다.
 > **구조(정적) vs 흐름(동적)**: 인터페이스/구현체 경계나 도메인 간 의존 "구조", 클래스/패키지 다이어그램만 보고 싶으면
@@ -32,6 +32,11 @@ graph TD
     Orchestrator -->|"③ send"| NotiFacade["NotificationFacade"]
     Orchestrator -->|"지연 재조정: 상태 조회"| PaymentFacade
     Orchestrator --> BookingService["BookingService"]
+
+    AdminBatch["BookingTimeoutBatchController (수동) / @Scheduled(주석, 미사용)"] -->|"T-04"| Batch["BookingTimeoutBatch"]
+    Batch --> BookingService
+    Batch -->|"tryConfirmIfPaid 재사용"| Orchestrator
+    Batch -->|"release"| SeatFacade
 
     SeatFacade --> SeatService["SeatService"]
     SeatService --> SeatMapper["SeatMapper (+XML)"]
@@ -381,3 +386,45 @@ sequenceDiagram
     Facade-->>Controller: BookingResult
     Controller-->>Controller: booking-result 뷰 렌더링
 ```
+
+### 6-4. `BookingTimeoutBatch.reconcilePendingBookings()` — HELD 타임아웃 회수 (T-04, 2026-07-24)
+
+`@Scheduled`는 아직 주석 처리 상태라 지금은 `POST /admin/batch/reconcile-pending-bookings`
+(`BookingTimeoutBatchController`)로만 호출된다.
+
+```mermaid
+sequenceDiagram
+    participant Trigger as BookingTimeoutBatchController (수동) / @Scheduled(주석, 미사용)
+    participant Batch as BookingTimeoutBatch
+    participant BookingSvc as BookingService
+    participant Orch as BookingOrchestrator
+    participant PaymentFacade
+    participant SeatFacade
+
+    Trigger->>Batch: reconcilePendingBookings()
+    Batch->>BookingSvc: findStalePending(now - 1분)
+    BookingSvc-->>Batch: List<Booking> (status=PENDING, created_at < cutoff)
+
+    loop 각 stale booking
+        Batch->>Orch: tryConfirmIfPaid(bookingId, scheduleId, seatId)
+        Orch->>PaymentFacade: findStatusByBookingId(bookingId)
+        PaymentFacade-->>Orch: PaymentStatus
+
+        alt PaymentStatus == SUCCESS
+            Note over Orch: 결제는 성공했는데 confirm이 못 됐던 상황 → 구제
+            Orch->>SeatFacade: confirm(scheduleId, seatId)
+            Orch->>BookingSvc: confirm(bookingId)
+            Orch-->>Batch: true
+        else 그 외
+            Orch-->>Batch: false
+            Batch->>SeatFacade: release(scheduleId, seatId)
+            Note over SeatFacade: HELD → AVAILABLE
+            Batch->>BookingSvc: cancel(bookingId)
+            Note over BookingSvc: PENDING → CANCELLED
+        end
+    end
+```
+
+`tryConfirmIfPaid`는 `getResult()`(§6-3)와 완전히 같은 메서드 — package-private으로 풀어서 재사용한다
+(다른 도메인이 `BookingOrchestrator`를 직접 호출 못 하게 `public`은 피함, AGENT.md §1). 배치도 Saga
+오케스트레이터와 동일하게 `seat`는 `SeatFacade`를 거쳐서만 건드린다.

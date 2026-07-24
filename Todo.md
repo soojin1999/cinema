@@ -16,13 +16,7 @@
 
 ## 🟡 해당 구현 시점에 논의 (그때 가서 결정)
 
-### T-04. HELD 타임아웃 처리
-- **논제**: 결제 도중 브라우저 종료 등으로 좌석이 HELD에 영구 잔류하는 경우 어떻게 처리할 것인가
-  - 후보 A: Spring `@Scheduled`로 주기적으로 만료된 HELD 행 스캔 → AVAILABLE 복원
-  - 후보 B: `schedule_seat`에 `held_at` 컬럼 추가, SELECT 시 만료 여부 함께 체크
-  - 후보 C: 현재 토이 범위에서 제외 (수동 개입)
-- **결정 시점**: `BookingOrchestrator` 구현 완료 후, 예외 처리(`Exception` 버블업) 코드 작성 시
-- **확정된 제약**: 후보 A(`@Scheduled`)로 결정되더라도 배치 코드는 예외 없이 `seatFacade.release()`를 통해서만 동작한다 (도메인 경계 규칙은 호출자가 Saga든 배치든 동일 적용)
+(현재 없음 — T-04는 결정 완료로 이동)
 
 ---
 
@@ -105,3 +99,4 @@
 | - | DB 스키마 분리 방향 | "MSA 구조를 제대로 공부하려면 데이터 레벨 경계도 지금 겪어보는 게 낫다"고 판단 — 도메인별 스키마 분리로 방향 확정 (물리 서버 분리는 아님, 범위 밖 유지). 지금 규모가 작을 때 하는 게 관리자 CRUD까지 붙은 뒤보다 훨씬 저렴하다는 게 근거. 착수 시점은 T-09에서 별도 논의 | 2026-07-18 |
 | T-09 | DB 스키마 분리 실행 | `screening_db`/`seat_db`/`booking_db`/`payment_db` 4개 스키마로 분리, 도메인 간 FK 4개(`seat.theater_id`, `schedule_seat.schedule_id`, `booking→schedule_seat`, `payment.booking_id`) 제거하고 애플리케이션(Saga 호출 순서) 레벨 정합성으로 대체. `config` 패키지에 도메인별 `DataSource`+`SqlSessionFactory`+`@MapperScan(sqlSessionFactoryRef=...)` 4벌 구성, `CinemaApplication`의 전역 `@MapperScan` 제거. FK 제거로 생기는 위험은 T-08(관리자 CRUD) 착수 시점에 애플리케이션 레벨 검증 추가하기로 결정(지금은 시드 데이터만 채워지고 런타임 위험 없음). 실행 후 `docker compose down -v`로 볼륨 재초기화 + 전체 Saga 흐름(hold→pay→confirm, 3개 스키마 관통) 실제 HTTP 검증 완료 | 2026-07-21 |
 | T-06 | 낙관적 락 충돌(`SeatConflictException`) 재시도 로직 | 후보 B(재시도 없이 그대로 예외 던짐)로 확정, 재시도 로직 추가 안 함. 이유: 좌석 hold는 배타적 자원이라 `updateStatusWithVersion` 영향 행 0(=충돌)은 기술적 노이즈가 아니라 "이미 다른 사람이 가져간" 진짜 비즈니스 결과 — 재시도해도 재조회 시 이미 `HELD`/`BOOKED`라 결국 `SeatNotAvailableException`으로 귀결되므로 DB 왕복만 늘어남 | 2026-07-24 |
+| T-04 | HELD 타임아웃 처리 | 후보 A(`@Scheduled` 배치)로 확정, `booking` 패키지에 `BookingTimeoutBatch` 신설. 스캔은 **booking 도메인이 주도**(`schedule_seat`엔 `booking_id`가 없어 booking만 "언제 PENDING이 됐는지" 앎, T-09) — `BookingMapper.findStalePending(cutoff)`로 `status='PENDING' AND created_at < cutoff` 조회, 새 컬럼(`held_at`) 없이 기존 `created_at`으로 충분. 각 booking마다 `BookingOrchestrator.tryConfirmIfPaid()`(지연 재조정과 동일 로직, `private`→package-private으로 풀어 재사용)를 먼저 시도해 payment가 실제로는 `SUCCESS`인 경우(응답 지연)는 confirm 처리하고, 그 외에만 `seatFacade.release()`+`bookingService.cancel()`. `TIMEOUT_MINUTES=1`(분), 배치 주기는 `@Scheduled(fixedDelay=30_000)`을 **주석으로만** 남기고 `@EnableScheduling`만 미리 켜둠 — 지금은 `POST /admin/batch/reconcile-pending-bookings`(`BookingTimeoutBatchController`)로 수동 트리거해서 테스트. 자동 스케줄 활성화·JUnit 테스트는 이후 세션 과제로 남음 | 2026-07-24 |

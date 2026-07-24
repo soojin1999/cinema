@@ -34,7 +34,10 @@ com.toy.cinema
 │   ├── BookingFacade              ← 외부 도메인이 booking을 만지는 유일한 창구 인터페이스 ⭐
 │   ├── BookingFacadeImpl          ← 구현체 (BookingOrchestrator로 위임만 함)
 │   ├── BookingOrchestrator        ← Saga 흐름 조율자 (핵심, Facade 아님 — booking 내부에서만 호출). reserve() + getResult()(지연 재조정)
-│   ├── BookingService             ← 독립 트랜잭션 메서드: insertPending/confirm/cancel/findById (각각 REQUIRES_NEW)
+│   │                                 tryConfirmIfPaid()는 package-private — BookingTimeoutBatch도 재사용 (public으로 열면 Facade 경계가 깨짐)
+│   ├── BookingService             ← 독립 트랜잭션 메서드: insertPending/confirm/cancel/findById/findStalePending (각각 REQUIRES_NEW)
+│   ├── BookingTimeoutBatch        ← T-04. 방치된 PENDING 회수(booking 도메인이 스캔 주도, seat는 Facade로만 접근). @Scheduled는 주석 처리 중
+│   ├── BookingTimeoutBatchController ← BookingTimeoutBatch 수동 트리거용 임시 endpoint(POST /admin/batch/reconcile-pending-bookings)
 │   ├── LockType                   ← PESSIMISTIC/OPTIMISTIC. 요청 파라미터로 받아 seatFacade.hold* 중 무엇을 부를지 결정
 │   ├── domain/  Booking           ← booking 한 행 스냅샷
 │   ├── mapper/  BookingMapper(+XML), InsertBookingParams, UpdateBookingStatusParams
@@ -208,6 +211,38 @@ AVAILABLE ──hold()──▶ HELD ──confirm()──▶ BOOKED
                        └──release()(보상)──▶ AVAILABLE
 ```
 
+### 4-4. HELD 타임아웃 회수 배치 (T-04, 2026-07-24)
+
+`②`(pay)가 `catch(Exception e)`(예측 외 기술 오류)로 빠지면 보상이 발동하지 않고 좌석은 `HELD`, booking은 `PENDING`으로
+잔류한다(§1 예외 계층). 이걸 영구히 방치하지 않도록 `booking` 패키지의 `BookingTimeoutBatch`가 주기적으로 회수한다.
+
+```
+BookingTimeoutBatch.reconcilePendingBookings()
+  │
+  ├─ bookingService.findStalePending(now - 1분)
+  │     → booking.status='PENDING' AND created_at < cutoff 인 booking 목록
+  │
+  └─ 각 booking마다:
+        ├─ bookingOrchestrator.tryConfirmIfPaid(...) 먼저 시도
+        │     → payment가 실제로는 SUCCESS(응답 지연)였다면 그 자리에서 confirm, 다음 booking으로
+        └─ 실패(SUCCESS 아님)면 보상:
+              seatFacade.release(...)   → HELD → AVAILABLE
+              bookingService.cancel(...) → PENDING → CANCELLED
+```
+
+**스캔을 booking 도메인이 주도하는 이유**: `schedule_seat`엔 `booking_id`가 없다(T-09, 도메인 간 FK 제거) — seat
+쪽만 봐서는 "이 HELD가 어느 booking과 묶여있는지" 알 방법이 없고, booking만 "언제 PENDING이 생성됐는지"(`created_at`)를
+안다. 그래서 배치는 booking에서 시작해서 seat/payment는 각자의 Facade로만 접근한다 — Saga 오케스트레이터와 동일한
+경계 규칙이 배치 호출자에도 그대로 적용된다(AGENT.md §1).
+
+**타임아웃 vs 지연 재조정 충돌 방지**: cutoff를 너무 짧게 잡으면 정상 진행 중인 결제(`MockPaymentGateway` 3초 지연)까지
+"방치됨"으로 오판해서 좌석을 뺏을 수 있다. `TIMEOUT_MINUTES=1`(분)로 충분한 여유를 뒀고, `tryConfirmIfPaid()`를
+release 전에 먼저 시도하는 것도 이 위험을 줄이기 위함 — payment가 실제로는 성공했다면 취소 대신 확정으로 구제된다.
+
+> **⚠️ 아직 자동 실행 안 함**: `@Scheduled(fixedDelay = 30_000)`은 코드에 주석으로만 있다. 지금은
+> `POST /admin/batch/reconcile-pending-bookings`(`BookingTimeoutBatchController`)로 수동 트리거만 가능 —
+> 실제 DB 검증 후 주석을 풀 예정 (STATUS.md 참고). `CinemaApplication`엔 `@EnableScheduling`만 미리 켜둠.
+
 ---
 
 ## 5. 트랜잭션 설계 (핵심 학습 포인트)
@@ -332,3 +367,4 @@ public class TossPaymentGateway implements PaymentGateway { ... }
 | `BookingController`/`ScheduleController` REST 전환 + `GlobalExceptionHandler` | ✅ 완료 — Thymeleaf 제거, JSON API + 정적 HTML/JS로 전환 (2026-07-18, [STATUS.md](../../STATUS.md) 참고) |
 | 화면(정적 HTML, `seats.html` polling 포함) | ✅ 완료 — [docs/frontend.md](../frontend.md) 참고 |
 | p6spy 개발용 SQL 로깅 (`common/logging/SqlLogFormat`) | ✅ 완료 — 파라미터 치환된 완성 SQL 콘솔 출력 (2026-07-18, [STATUS.md](../../STATUS.md) 트러블슈팅 기록 참고) |
+| `BookingTimeoutBatch`(T-04, HELD 타임아웃 회수) | 🟡 구현 완료, `@Scheduled` 주석 처리 중 — `POST /admin/batch/reconcile-pending-bookings`로만 수동 트리거. 실제 DB 검증·자동화·JUnit은 다음 세션 (2026-07-24, [STATUS.md](../../STATUS.md) 참고) |

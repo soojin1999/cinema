@@ -10,6 +10,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
+import java.util.List;
+
 /**
  * booking 도메인의 상태 관리 담당. BookingOrchestrator가 호출한다 (같은 도메인 내부라 mapper 타입을
  * 직접 주고받아도 경계 규칙 위반 아님 — "패키지 밖 import 금지"는 booking 도메인 밖의 다른 도메인 기준).
@@ -41,5 +44,11 @@ public class BookingService {
     @Transactional(transactionManager = "bookingTransactionManager", propagation = Propagation.REQUIRES_NEW)
     public Booking findById(Long bookingId) {
         return bookingMapper.findById(bookingId);
+    }
+
+    /** T-04 배치 전용. cutoff 이전에 생성된 채 아직 PENDING인(= 방치된 HELD와 연결된) booking 조회. */
+    @Transactional(transactionManager = "bookingTransactionManager", propagation = Propagation.REQUIRES_NEW)
+    public List<Booking> findStalePending(LocalDateTime cutoff) {
+        return bookingMapper.findStalePending(cutoff);
     }
 }

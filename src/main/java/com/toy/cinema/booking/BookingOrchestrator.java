@@ -98,13 +98,14 @@ public class BookingOrchestrator {
     }
 
     /**
-     * 결제를 했다면 booking (예약 상태), schedule_seat(좌석 상태) 업데이트
+     * 결제를 했다면 booking (예약 상태), schedule_seat(좌석 상태) 업데이트.
+     * package-private — 같은 booking 패키지의 BookingTimeoutBatch(T-04)도 재사용한다.
      * @param bookingId
      * @param scheduleId
      * @param seatId
      * @return
      */
-    private boolean tryConfirmIfPaid(Long bookingId, Long scheduleId, Long seatId) {
+    boolean tryConfirmIfPaid(Long bookingId, Long scheduleId, Long seatId) {
         if(paymentFacade.findStatusByBookingId(bookingId) == PaymentStatus.SUCCESS) {
             seatFacade.confirm(new SeatConfirmCommand(scheduleId, seatId));
             bookingService.confirm(bookingId);

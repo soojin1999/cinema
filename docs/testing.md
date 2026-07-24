@@ -1,6 +1,6 @@
 # Testing 현황
 
-> **최종 수정**: 2026-07-21
+> **최종 수정**: 2026-07-24
 > `T-10`(JUnit 테스트 작성, `Todo.md` 참고) 진행 중. 계획된 4단계: ① 기초 문법 → ② 순수 로직 테스트 →
 > ③ Mockito로 의존성 모킹 → ④ 진짜 DB 동시성 통합테스트. ①~③은 `SeatService` 대상으로 완료, ④는 착수함.
 
@@ -39,6 +39,9 @@
 - 충돌감지형(낙관적) 락 쪽 동시성 테스트 — "기다리지 않고 즉시 충돌 예외"라는 반대 실패 모드는 아직 미검증
 - `SeatService`의 `confirm()`/`release()`/`getSeatGrid()`, `SeatFacadeImpl`, 그 외 모든 도메인(`booking`/`payment`/
   `notification`/`screening`)은 아직 테스트 코드 없음 — 지금까지 전부 curl/브라우저 수동 검증으로만 확인됨.
+- `BookingTimeoutBatch`(T-04, 2026-07-24 구현)는 **테스트 코드는 물론 curl/브라우저 수동 검증조차 아직 안 함** —
+  다른 도메인보다 한 단계 더 미검증 상태. `POST /admin/batch/reconcile-pending-bookings`로 먼저 수동 검증부터
+  필요. 상세 → [backend/backend.md §4-4](backend/backend.md#4-4-held-타임아웃-회수-배치-t-04-2026-07-24).
 
 ---
 
@@ -47,3 +50,5 @@
 - 충돌감지형(낙관적) 락 동시성 테스트 추가 (같은 패턴, 스레드 2개)
 - `SeatService`의 `confirm()`/`release()`/`getSeatGrid()` 테스트 추가
 - 다른 도메인(`PaymentService` 등)으로 Mockito 테스트 범위 확장
+- `BookingTimeoutBatch.reconcilePendingBookings()` 검증 — 먼저 curl로 수동 확인, 이후 Mockito(`BookingService`/
+  `BookingOrchestrator`/`SeatFacade` 모킹)로 "SUCCESS면 confirm 구제" / "아니면 release+cancel" 두 분기 테스트 추가
