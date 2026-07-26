@@ -389,8 +389,8 @@ sequenceDiagram
 
 ### 6-4. `BookingTimeoutBatch.reconcilePendingBookings()` — HELD 타임아웃 회수 (T-04, 2026-07-24)
 
-`@Scheduled`는 아직 주석 처리 상태라 지금은 `POST /admin/batch/reconcile-pending-bookings`
-(`BookingTimeoutBatchController`)로만 호출된다.
+`@Scheduled`는 아직 주석 처리 상태(사용자가 직접 해제 예정)라 지금은 `POST /admin/batch/reconcile-pending-bookings`
+(`BookingTimeoutBatchController`)로만 호출된다. 두 분기(confirm 구제/release+cancel) 다 수동 검증 완료(2026-07-24).
 
 ```mermaid
 sequenceDiagram

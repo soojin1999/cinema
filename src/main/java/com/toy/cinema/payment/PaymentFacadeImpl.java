@@ -1,6 +1,7 @@
 package com.toy.cinema.payment;
 
 import com.toy.cinema.common.enums.PaymentStatus;
+import com.toy.cinema.common.exception.CinemaException;
 import com.toy.cinema.common.exception.PaymentFailedException;
 import com.toy.cinema.payment.domain.Payment;
 import com.toy.cinema.payment.dto.PaymentRequest;

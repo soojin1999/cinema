@@ -17,6 +17,31 @@ services:
       - cinema-mysql-data:/var/lib/mysql                      # 컨테이너 재시작해도 데이터 유지
       - ./src/main/resources/sql:/docker-entrypoint-initdb.d  # 컨테이너 최초 실행 시 01~05 파일명 순서대로 자동 실행
                                                                  # (01~04: 스키마별 DDL, 05: 시드 데이터, T-09)
+    healthcheck:
+      # mysqladmin ping이 성공하는 시점 == 공식 mysql 이미지의 docker-entrypoint가 초기화 스크립트
+      # (01~05, 위 volumes)까지 전부 끝낸 뒤 "진짜" 서버를 띄운 상태 — app 서비스가 이 healthy를
+      # 기다리게 해서 "스키마도 없는데 앱이 먼저 접속 시도하다 죽는" 문제를 막는다.
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-p${DB_PASSWORD:-password}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build:
+      context: .
+      dockerfile: docker/app/Dockerfile
+    container_name: cinema-app
+    depends_on:
+      mysql:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    environment:
+      # application.yaml의 ${DB_HOST:localhost} 기본값을 여기서만 덮어씀 — 로컬 ./gradlew bootRun은
+      # 여전히 localhost:3306(포트 매핑)으로 붙고, 컨테이너 안에서는 서비스명 mysql로 붙는다
+      DB_HOST: mysql
+      DB_PASSWORD: ${DB_PASSWORD:-password}
+      TZ: Asia/Seoul
 
 volumes:
   cinema-mysql-data:

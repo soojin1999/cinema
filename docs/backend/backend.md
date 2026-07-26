@@ -36,7 +36,7 @@ com.toy.cinema
 │   ├── BookingOrchestrator        ← Saga 흐름 조율자 (핵심, Facade 아님 — booking 내부에서만 호출). reserve() + getResult()(지연 재조정)
 │   │                                 tryConfirmIfPaid()는 package-private — BookingTimeoutBatch도 재사용 (public으로 열면 Facade 경계가 깨짐)
 │   ├── BookingService             ← 독립 트랜잭션 메서드: insertPending/confirm/cancel/findById/findStalePending (각각 REQUIRES_NEW)
-│   ├── BookingTimeoutBatch        ← T-04. 방치된 PENDING 회수(booking 도메인이 스캔 주도, seat는 Facade로만 접근). @Scheduled는 주석 처리 중
+│   ├── BookingTimeoutBatch        ← T-04. 방치된 PENDING 회수(booking 도메인이 스캔 주도, seat는 Facade로만 접근). @Scheduled는 주석 처리 중(사용자가 직접 해제 예정)
 │   ├── BookingTimeoutBatchController ← BookingTimeoutBatch 수동 트리거용 임시 endpoint(POST /admin/batch/reconcile-pending-bookings)
 │   ├── LockType                   ← PESSIMISTIC/OPTIMISTIC. 요청 파라미터로 받아 seatFacade.hold* 중 무엇을 부를지 결정
 │   ├── domain/  Booking           ← booking 한 행 스냅샷
@@ -240,8 +240,10 @@ BookingTimeoutBatch.reconcilePendingBookings()
 release 전에 먼저 시도하는 것도 이 위험을 줄이기 위함 — payment가 실제로는 성공했다면 취소 대신 확정으로 구제된다.
 
 > **⚠️ 아직 자동 실행 안 함**: `@Scheduled(fixedDelay = 30_000)`은 코드에 주석으로만 있다. 지금은
-> `POST /admin/batch/reconcile-pending-bookings`(`BookingTimeoutBatchController`)로 수동 트리거만 가능 —
-> 실제 DB 검증 후 주석을 풀 예정 (STATUS.md 참고). `CinemaApplication`엔 `@EnableScheduling`만 미리 켜둠.
+> `POST /admin/batch/reconcile-pending-bookings`(`BookingTimeoutBatchController`)로만 트리거 가능 —
+> `CinemaApplication`엔 `@EnableScheduling`만 미리 켜둠(주석만 풀면 바로 동작하도록). **수동 트리거로 두 분기
+> (confirm 구제/release+cancel) 다 DB에 테스트 데이터를 직접 심어서 검증 완료** (2026-07-24, STATUS.md 참고) —
+> `@Scheduled` 주석 해제는 사용자가 직접 해볼 예정, JUnit 테스트는 다음 세션 과제.
 
 ---
 
@@ -367,4 +369,5 @@ public class TossPaymentGateway implements PaymentGateway { ... }
 | `BookingController`/`ScheduleController` REST 전환 + `GlobalExceptionHandler` | ✅ 완료 — Thymeleaf 제거, JSON API + 정적 HTML/JS로 전환 (2026-07-18, [STATUS.md](../../STATUS.md) 참고) |
 | 화면(정적 HTML, `seats.html` polling 포함) | ✅ 완료 — [docs/frontend.md](../frontend.md) 참고 |
 | p6spy 개발용 SQL 로깅 (`common/logging/SqlLogFormat`) | ✅ 완료 — 파라미터 치환된 완성 SQL 콘솔 출력 (2026-07-18, [STATUS.md](../../STATUS.md) 트러블슈팅 기록 참고) |
-| `BookingTimeoutBatch`(T-04, HELD 타임아웃 회수) | 🟡 구현 완료, `@Scheduled` 주석 처리 중 — `POST /admin/batch/reconcile-pending-bookings`로만 수동 트리거. 실제 DB 검증·자동화·JUnit은 다음 세션 (2026-07-24, [STATUS.md](../../STATUS.md) 참고) |
+| `BookingTimeoutBatch`(T-04, HELD 타임아웃 회수) | ✅ 구현 + 수동 검증 완료 — `@Scheduled`는 아직 주석 처리 중(사용자가 직접 해제 예정), `POST /admin/batch/reconcile-pending-bookings`로 두 분기 다 확인함. JUnit은 다음 세션 (2026-07-24, [STATUS.md](../../STATUS.md) 참고) |
+| 앱 도커라이즈(T-12 선행 조건) | ✅ 완료 — `docker/app/Dockerfile`(멀티스테이지) + `docker-compose.yml`의 `app` 서비스, `mysql` healthcheck로 기동 순서 보장. 평소 로컬 개발은 여전히 인텔리제이/`bootRun` (2026-07-24, [STATUS.md](../../STATUS.md) 참고) |

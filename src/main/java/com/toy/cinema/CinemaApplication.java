@@ -12,7 +12,8 @@ import org.springframework.scheduling.annotation.EnableScheduling;
  * 각자 @MapperScan(sqlSessionFactoryRef=...)으로 자기 도메인만 스캔한다.
  *
  * @EnableScheduling: BookingTimeoutBatch(T-04)의 @Scheduled는 지금 주석 처리라 당장은 아무 효과 없지만,
- * 나중에 주석을 풀 때 이 어노테이션 추가를 까먹지 않도록 미리 켜둔다.
+ * 미리 켜둬야 나중에 그 주석만 풀었을 때 바로 동작한다 — 이걸 깜빡하면 @Transactional 때(T-10 4단계) 겪었던
+ * 것과 같은 "에러 없이 조용히 무시" 패턴이 또 재현된다.
  */
 @SpringBootApplication
 @EnableScheduling

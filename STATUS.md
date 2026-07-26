@@ -24,14 +24,21 @@ FK 4개 제거, `config` 패키지 도메인별 `DataSource`+`SqlSessionFactory`
 확정. 좌석 hold는 배타적 자원이라 충돌 = 진짜 비즈니스 결과(이미 남이 가져감)라서 재시도해도 결국 `SeatNotAvailableException`으로
 귀결됨 — 코드 변경 없음, 지금 구현이 그대로 최종 형태. 상세 → `Todo.md` 완료된 논제 표.
 
-**T-04 구현 완료 (2026-07-24)**: `BookingTimeoutBatch` 신설 — 방치된 `PENDING` booking을 booking 도메인이 스캔해서
-회수한다. 상세 → 아래 "오늘(2026-07-24) T-04" 절, `Todo.md` 완료된 논제 표. **`@Scheduled`는 아직 주석 처리 상태** —
-`POST /admin/batch/reconcile-pending-bookings`로 수동 트리거만 되는 중. 실제 자동 주기 실행 전환은 다음 세션 과제.
+**T-04 구현 + 수동 검증 완료 (2026-07-24)**: `BookingTimeoutBatch` 신설 — 방치된 `PENDING` booking을 booking
+도메인이 스캔해서 회수한다. `POST /admin/batch/reconcile-pending-bookings`로 두 분기(payment `SUCCESS`였던
+케이스 → confirm 구제 / 아니었던 케이스 → release+cancel) 둘 다 DB에 테스트 데이터 직접 심어서 수동 검증 완료
+(schedule_seat·booking `mysql` 컨테이너에 직접 INSERT/UPDATE 후 endpoint 호출 → 결과 확인). 상세 → 아래
+"오늘(2026-07-24) T-04" 절, `Todo.md` 완료된 논제 표. **`@Scheduled`는 아직 주석 처리 상태** — 사용자가 직접
+주석을 풀어서 자동 실행을 확인해볼 예정.
 
 다음 세션 우선순위:
 
 1. **`T-10` 계속** — 충돌감지형(낙관적) 락 쪽 동시성 테스트("기다리지 않고 즉시 충돌") 추가. 그다음 `SeatService`의 `confirm()`/`release()`/`getSeatGrid()`, 다른 도메인(`PaymentService` 등)으로 Mockito 테스트 범위 확장
-2. `T-04` 마무리 — `BookingTimeoutBatch` 실제 DB로 수동 트리거 검증(아직 브라우저/curl 검증 안 함), 검증되면 `@Scheduled` 주석 해제, 이후 JUnit 테스트 추가(T-10 범위에 편입 가능)
+2. `T-04` 마무리 — `BookingTimeoutBatch`용 JUnit 테스트 추가(T-10 범위에 편입 가능). `@Scheduled` 주석 해제는 사용자가 직접 진행
+
+**순서 확정 (2026-07-24)**: `T-10` 마무리 뒤엔 `T-08`(관리자 CRUD)이 아니라 **`T-11`(실 서버 배포) → `T-12`(CI/CD)를
+먼저** 하기로 함 — 사용자가 CRUD는 이미 많이 해봐서 이 프로젝트에서 반복할 이유가 없고, CI/CD가 진짜 미경험
+영역이라 학습 우선순위상 앞당김. 상세 → `Todo.md` T-08/T-11/T-12 "순서 결정/변경" 기록.
 
 ## 완료된 것
 
@@ -70,8 +77,9 @@ FK 4개 제거, `config` 패키지 도메인별 `DataSource`+`SqlSessionFactory`
                           PlatformTransactionManager 빈 부재로 @Transactional 전체가 무시되던 버그 발견·수정(config
                           패키지 4개 + Seat/Payment/BookingService). 충돌감지형 락 쪽은 아직 미작성 (2026-07-21)
 ✅ T-04 HELD 타임아웃 배치   BookingTimeoutBatch(+ 수동 트리거용 BookingTimeoutBatchController) 신설. booking 도메인이
-                          스캔 주도(findStalePending), BookingOrchestrator.tryConfirmIfPaid 재사용. 상세 → 아래
-                          "오늘(2026-07-24) T-04" 절. @Scheduled는 주석 상태, 실제 DB 검증·자동화는 다음 세션 (2026-07-24)
+                          스캔 주도(findStalePending), BookingOrchestrator.tryConfirmIfPaid 재사용. 두 분기(confirm
+                          구제/release+cancel) 다 DB에 테스트 데이터 심어서 수동 검증 완료. 상세 → 아래
+                          "오늘(2026-07-24) T-04" 절. @Scheduled는 주석 상태(사용자가 직접 해제 예정), JUnit은 다음 세션 (2026-07-24)
 
 ⬜ (사소, 우선순위 낮음) 로그 파일에 찍히는 한글 예외 메시지가 콘솔 출력 경로에서 일부 깨짐 — DB 저장값/HTTP JSON 응답엔 영향 없음, 순수 콘솔 표시 문제로 추정. 다시 볼 때 아래 "오늘 겪은 인프라 문제" 참고
 ```
@@ -104,8 +112,27 @@ seat 쪽만 봐서는 "어느 booking과 연결된 HELD인지" 알 수 없기 �
 **배치 주기는 아직 자동화 안 함**: `@Scheduled(fixedDelay = 30_000)`은 코드에 주석으로만 남겨뒀다 — 실제로 주기
 실행시키기 전에 먼저 수동으로 동작을 확인하고 싶어서. 대신 `POST /admin/batch/reconcile-pending-bookings`
 (`BookingTimeoutBatchController`)로 원할 때 직접 호출. `CinemaApplication`엔 `@EnableScheduling`만 미리 켜둠 —
-나중에 `@Scheduled` 주석 풀 때 이거 빠뜨리는 실수 방지용. **아직 실제 DB로 검증은 안 했고, JUnit 테스트도 없음** —
-둘 다 다음 세션 과제 (T-10 4단계 범위에 자연스럽게 편입 가능).
+나중에 `@Scheduled` 주석 풀 때 이거 빠뜨리는 실수 방지용. **사용자가 직접 주석을 풀어서 자동 실행을 확인해볼 예정.**
+
+**수동 검증 완료**: `mysql` 컨테이너에 직접 접속해서(`docker compose exec mysql mysql -uroot -p...`) `schedule_seat`을
+`HELD`로, `booking`을 `created_at`이 5분 전인 `PENDING`으로 심어놓고 endpoint를 호출해 두 분기를 각각 확인했다 —
+① `payment` 레코드를 아예 안 넣은 케이스(→ `release`+`cancel`), ② `payment.status='SUCCESS'`로 넣은 케이스
+(→ `tryConfirmIfPaid`가 confirm으로 구제). 둘 다 기대한 대로 동작. **JUnit 테스트는 아직 없음** — 다음 세션 과제
+(T-10 4단계 범위에 자연스럽게 편입 가능).
+
+## 오늘(2026-07-24) Spring Boot 앱 도커라이즈 (T-12 선행 조건)
+
+MySQL만 컨테이너였던 걸 앱도 도커라이즈했다 — `docker/app/Dockerfile`(멀티스테이지: `eclipse-temurin:17-jdk`에서
+프로젝트에 커밋된 Gradle Wrapper로 `bootJar` 빌드 → `eclipse-temurin:17-jre`로 jar만 복사해 실행), `.dockerignore`
+신설, `docker-compose.yml`에 `app` 서비스 추가. `mysql` 서비스엔 `healthcheck`(`mysqladmin ping`)를 추가해서
+`app`이 `depends_on: condition: service_healthy`로 스키마 초기화까지 끝난 뒤에만 뜨도록 함.
+`application.yaml`이 이미 `${DB_HOST:localhost}`로 환경변수화돼 있어서 코드 변경은 필요 없었고, `app` 서비스에
+`DB_HOST: mysql`만 얹었다.
+
+**로컬 개발 워크플로는 안 바뀜**: 컨테이너 재빌드가 인텔리제이의 즉시 컴파일보다 훨씬 느려서, 평소 개발은 여전히
+인텔리제이/`./gradlew bootRun` + `docker compose up -d mysql`(DB만) 조합을 쓴다. `docker-compose.yml`(앱+DB
+전부)은 "나중에 배포 서버에 그대로 들고 갈 설정"으로만 씀 — 로컬용/배포용 compose 파일을 지금 나눌지도 논의했는데,
+지금은 prod에서만 달라야 할 설정이 없어서 나누지 않기로 함(`T-11` 착수 시점에 재검토, `Todo.md` 참고).
 
 ## 오늘(2026-07-18) 아키텍처 변경 — Thymeleaf → REST API + 정적 HTML/JS
 

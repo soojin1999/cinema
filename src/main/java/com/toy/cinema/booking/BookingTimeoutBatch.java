@@ -30,7 +30,7 @@ public class BookingTimeoutBatch {
     private final BookingOrchestrator bookingOrchestrator;
     private final SeatFacade seatFacade;
 
-    // @Scheduled(fixedDelay = 30_000)  // 실제 운영이면 이 주기로 자동 실행 — 지금은 /admin/batch/... 수동 트리거로 테스트 중 (Todo.md T-04)
+    // @Scheduled(fixedDelay = 30_000)  // 주석 해제하면 30초마다 자동 실행 — 지금은 /admin/batch/... 수동 트리거로만 테스트 (Todo.md T-04)
     public void reconcilePendingBookings() {
         LocalDateTime cutoff = LocalDateTime.now().minusMinutes(TIMEOUT_MINUTES);
         List<Booking> staleBookings = bookingService.findStalePending(cutoff);
