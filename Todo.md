@@ -55,19 +55,12 @@
   테스트로만 잡을 수 있었던 버그 — T-10 4단계가 왜 "이 프로젝트 핵심 학습 대상"인지 보여준 사례
 - **착수 시점**: 바로 다음 세션부터 (2026-07-18 결정). 1~3단계는 `T-09`(DB 스키마 분리)와 무관하게 진행 가능 — 진짜 DB를 안 보기 때문. `T-09`는 2026-07-21 완료돼서 4단계(진짜 DB 동시성 통합테스트) 착수 조건은 이미 충족됨
 
-### T-11. MySQL을 로컬 Docker가 아닌 실제 서버로 배포
-- **현재**: MySQL·앱 둘 다 `docker-compose.yml`에 있어서 `docker compose up`으로 같이 띄울 수 있음(2026-07-24, T-12 선행 조건으로 앱도 도커라이즈함 — `docker/app/Dockerfile`). 다만 **평소 로컬 개발은 여전히 인텔리제이/`./gradlew bootRun`으로 앱 실행 + `docker compose up -d mysql`로 DB만 컨테이너** — 이유는 컨테이너 재빌드가 느려서 개발 루프엔 안 맞기 때문(상세 → 아래 결정 기록)
-- **나중에**: 실제 서버(클라우드 등)에 DB를 올려서 로컬 환경 의존 없이 접근 가능하게 배포
-- ~~**착수 조건**: 학습 페이즈 완료 후, `T-08`과 함께 검토~~ → **순서 변경(2026-07-24)**: `T-10`(동시성 테스트) 마무리 직후 바로 착수, `T-08`보다 먼저 — 이유는 `T-12` 항목의 "순서 변경" 참고(CI/CD 학습을 우선하기 위해 CRUD보다 먼저 실 서버부터 준비)
-- **연관**: `.env` 기반 시크릿 분리(`DB_PASSWORD`)가 이미 되어 있어서, 실제 서버 접속 정보로 교체하는 것 자체는 `.env` 값만 바꾸면 됨. `T-09`(DB 스키마 분리)와 순서·구조를 함께 고려해야 함 — 스키마 분리를 실제 서버 이전 전에 할지 후에 할지는 별도 논의 필요
-- **결정 기록(2026-07-24)**: 로컬용 `docker-compose.yml`과 배포서버용을 지금 미리 나눌지 논의 — **나누지 않기로 함**. 지금은 `docker compose up -d mysql`처럼 서비스명 지정으로 로컬에서 DB만 띄우면 충분하고, prod에서만 달라야 할 설정(`restart` 정책, 볼륨 마운트 방식 등)이 아직 구체적으로 없어 미리 나누면 과설계. **T-11 착수 시점에 실제로 뭐가 달라야 하는지 보이면 그때 파일을 나눌지 재검토**
-
 ### T-12. CI/CD — git push 트리거 + nginx 무중단 배포
-- **현재**: 배포 파이프라인 없음. 앱은 `docker/app/Dockerfile`로 도커라이즈 완료(2026-07-24) — `docker-compose.yml`에 `app`+`mysql` 둘 다 있음. 다만 이건 로컬 실행 방식(여전히 인텔리제이/`bootRun`)이 아니라 "언젠가 배포 서버에 그대로 들고 갈 설정" 성격
+- **현재**: 배포 파이프라인 없음. 앱은 `docker/app/Dockerfile`로 도커라이즈 완료(2026-07-24) — `docker-compose.yml`에 `app`+`mysql` 둘 다 있음. `T-11`(실 서버 배포)도 완료돼서(2026-07-26) 이 compose 구성이 실제 AWS EC2에서 검증됨 — CI/CD가 자동화해야 할 "수동 배포 과정"(git pull → docker compose up --build)이 이미 손으로 한 번 확인된 상태
 - **나중에**: GitHub Actions(또는 self-hosted runner)로 push 훅 → 이미지 빌드 → 배포 서버에서 새 컨테이너 기동 → 헬스체크 통과 시 nginx upstream 스위칭(blue/green)으로 무중단 배포
 - ~~**착수 조건**: 학습 페이즈 + T-05/T-08 등 나중 항목을 다 끝낸 뒤 마지막에~~ → **순서 변경(2026-07-24)**: `T-10`(동시성 테스트) 마무리 직후, `T-05`/`T-08`보다 먼저 착수 — CRUD(T-08)는 사용자가 이미 많이 해본 영역이라 이 프로젝트에서 반복할 필요가 없고, CI/CD가 진짜 미경험 영역이라 학습 우선순위상 앞당김. 상세 이유 → `T-08` 항목의 "순서 결정" 참고
 - ~~**선행 조건**: 앱 자체가 아직 도커라이즈 안 돼 있음~~ → **충족됨(2026-07-24)**, `docker/app/Dockerfile`(멀티스테이지) + `docker-compose.yml`의 `app` 서비스(`mysql` healthcheck로 기동 순서 보장)
-- **연관**: `T-11`(MySQL 실서버 배포)과 같은 "실제로 써먹을 수 있는 앱" 격상 단계에서 함께 검토 — 실제 착수 순서는 `T-11` → `T-12`
+- **연관**: `T-11`(MySQL 실서버 배포) 완료(2026-07-26)로 착수 조건 충족 — 다만 `T-10` 4단계(낙관적 락 동시성 테스트)는 아직 안 끝나서, 순서를 그대로 지킬지 `T-10`보다 먼저 `T-12`로 갈지는 착수 시점에 다시 확인 필요
 
 ---
 
@@ -105,3 +98,5 @@
 | T-09 | DB 스키마 분리 실행 | `screening_db`/`seat_db`/`booking_db`/`payment_db` 4개 스키마로 분리, 도메인 간 FK 4개(`seat.theater_id`, `schedule_seat.schedule_id`, `booking→schedule_seat`, `payment.booking_id`) 제거하고 애플리케이션(Saga 호출 순서) 레벨 정합성으로 대체. `config` 패키지에 도메인별 `DataSource`+`SqlSessionFactory`+`@MapperScan(sqlSessionFactoryRef=...)` 4벌 구성, `CinemaApplication`의 전역 `@MapperScan` 제거. FK 제거로 생기는 위험은 T-08(관리자 CRUD) 착수 시점에 애플리케이션 레벨 검증 추가하기로 결정(지금은 시드 데이터만 채워지고 런타임 위험 없음). 실행 후 `docker compose down -v`로 볼륨 재초기화 + 전체 Saga 흐름(hold→pay→confirm, 3개 스키마 관통) 실제 HTTP 검증 완료 | 2026-07-21 |
 | T-06 | 낙관적 락 충돌(`SeatConflictException`) 재시도 로직 | 후보 B(재시도 없이 그대로 예외 던짐)로 확정, 재시도 로직 추가 안 함. 이유: 좌석 hold는 배타적 자원이라 `updateStatusWithVersion` 영향 행 0(=충돌)은 기술적 노이즈가 아니라 "이미 다른 사람이 가져간" 진짜 비즈니스 결과 — 재시도해도 재조회 시 이미 `HELD`/`BOOKED`라 결국 `SeatNotAvailableException`으로 귀결되므로 DB 왕복만 늘어남 | 2026-07-24 |
 | T-04 | HELD 타임아웃 처리 | 후보 A(`@Scheduled` 배치)로 확정, `booking` 패키지에 `BookingTimeoutBatch` 신설. 스캔은 **booking 도메인이 주도**(`schedule_seat`엔 `booking_id`가 없어 booking만 "언제 PENDING이 됐는지" 앎, T-09) — `BookingMapper.findStalePending(cutoff)`로 `status='PENDING' AND created_at < cutoff` 조회, 새 컬럼(`held_at`) 없이 기존 `created_at`으로 충분. 각 booking마다 `BookingOrchestrator.tryConfirmIfPaid()`(지연 재조정과 동일 로직, `private`→package-private으로 풀어 재사용)를 먼저 시도해 payment가 실제로는 `SUCCESS`인 경우(응답 지연)는 confirm 처리하고, 그 외에만 `seatFacade.release()`+`bookingService.cancel()`. `TIMEOUT_MINUTES=1`(분), 배치 주기는 `@Scheduled(fixedDelay=30_000)`을 **주석으로만** 남기고 `@EnableScheduling`만 미리 켜둠 — 지금은 `POST /admin/batch/reconcile-pending-bookings`(`BookingTimeoutBatchController`)로 수동 트리거해서 테스트. 자동 스케줄 활성화·JUnit 테스트는 이후 세션 과제로 남음 | 2026-07-24 |
+| T-11 | MySQL을 로컬 Docker가 아닌 실제 서버로 배포 | AWS EC2(프리티어, `ap-southeast-2`, Amazon Linux 2023) 인스턴스 1대에 MySQL·앱 둘 다 컨테이너로 배포 — RDS(관리형) 대신 기존 `docker-compose.yml`+`sql/01~05-*.sql` init 스크립트를 그대로 재사용하는 쪽으로 결정(추가 학습 비용 없음). 보안 그룹: SSH(22)는 내 IP만, 8080은 전체 공개, 3306은 아예 안 엶(앱만 도커 내부망으로 DB 접근). `git clone`(master 브랜치) 후 `.env`에 운영용 `DB_PASSWORD`를 로컬과 별도로 새로 생성(`openssl rand`). `http://<퍼블릭IP>:8080` 브라우저 접속으로 실제 인터넷을 통한 배포 확인 완료. 상세 과정·트러블슈팅 → `STATUS.md` "오늘(2026-07-26) T-11" 절 | 2026-07-26 |
+| - | 실 서버 DB 스키마 변경 반영 방법 | 후보 B(로컬에서 SSH 터널로 원격 MySQL에 직접 붙어 수동 `ALTER` 실행)로 확정. 후보 A(`docker compose down -v`로 볼륨째 재초기화)는 데이터가 전부 날아가서 제외, 후보 C(Flyway/Liquibase 마이그레이션 툴)는 지금 스코프 밖이라 보류 — 실사용자 데이터가 쌓이기 시작하는 `T-08`(관리자 CRUD) 시점에 재검토 여지 있음. 터널 예시: `ssh -L 3306:localhost:3306 cinema` 후 로컬 MySQL 클라이언트로 `localhost:3306` 접속. 아직 실제로 스키마 변경이 발생한 적은 없어 실행 절차는 미검증 | 2026-07-26 |

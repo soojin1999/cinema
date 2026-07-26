@@ -8,6 +8,11 @@
 
 ## 🎯 다음 세션 시작 지점
 
+**`T-11` 완료 (2026-07-26)**: AWS EC2(프리티어)에 MySQL+앱 실제 배포, 브라우저로 인터넷 통해 접속 확인까지 끝났다.
+원래 정해둔 순서(`T-10` 마무리 → `T-11` → `T-12`)를 사용자 판단으로 뒤집어서 `T-10`이 안 끝난 채로 `T-11`을
+먼저 진행함 — 상세 → 아래 "오늘(2026-07-26) T-11" 절. 다음 세션은 `T-10` 마무리(낙관적 락 동시성 테스트 등)를
+마저 할지, 바로 `T-12`(CI/CD)로 갈지 먼저 정하고 시작할 것.
+
 **`T-10` 4단계(진짜 DB 동시성 통합테스트) 착수.** 2026-07-21 세션에서 `SeatServiceConcurrencyTest`에
 대기형(비관적) 락 동시성 테스트(스레드 2개, `ExecutorService`+`CountDownLatch`)를 작성하고 실제 `seat_db`로 검증했다.
 
@@ -36,9 +41,11 @@ FK 4개 제거, `config` 패키지 도메인별 `DataSource`+`SqlSessionFactory`
 1. **`T-10` 계속** — 충돌감지형(낙관적) 락 쪽 동시성 테스트("기다리지 않고 즉시 충돌") 추가. 그다음 `SeatService`의 `confirm()`/`release()`/`getSeatGrid()`, 다른 도메인(`PaymentService` 등)으로 Mockito 테스트 범위 확장
 2. `T-04` 마무리 — `BookingTimeoutBatch`용 JUnit 테스트 추가(T-10 범위에 편입 가능). `@Scheduled` 주석 해제는 사용자가 직접 진행
 
-**순서 확정 (2026-07-24)**: `T-10` 마무리 뒤엔 `T-08`(관리자 CRUD)이 아니라 **`T-11`(실 서버 배포) → `T-12`(CI/CD)를
-먼저** 하기로 함 — 사용자가 CRUD는 이미 많이 해봐서 이 프로젝트에서 반복할 이유가 없고, CI/CD가 진짜 미경험
-영역이라 학습 우선순위상 앞당김. 상세 → `Todo.md` T-08/T-11/T-12 "순서 결정/변경" 기록.
+**순서 확정 (2026-07-24) → 실제로는 순서 변경해서 진행 (2026-07-26)**: 원래 `T-10` 마무리 뒤 `T-11`(실 서버 배포) →
+`T-12`(CI/CD) 순으로 정해뒀었는데, `T-08`(관리자 CRUD)보다 이 둘을 먼저 하기로 한 그 취지(CI/CD가 진짜 미경험
+영역이라 학습 우선순위상 앞당김)를 사용자가 한 단계 더 밀어붙여서, `T-10`이 안 끝난 채로 `T-11`부터 먼저
+진행했다(2026-07-26 완료). `T-08` 대비 순서는 그대로고, `T-10`↔`T-11` 순서만 바뀐 것. 상세 → `Todo.md` T-08/T-12
+"순서 결정/변경" 기록.
 
 ## 완료된 것
 
@@ -80,9 +87,66 @@ FK 4개 제거, `config` 패키지 도메인별 `DataSource`+`SqlSessionFactory`
                           스캔 주도(findStalePending), BookingOrchestrator.tryConfirmIfPaid 재사용. 두 분기(confirm
                           구제/release+cancel) 다 DB에 테스트 데이터 심어서 수동 검증 완료. 상세 → 아래
                           "오늘(2026-07-24) T-04" 절. @Scheduled는 주석 상태(사용자가 직접 해제 예정), JUnit은 다음 세션 (2026-07-24)
+✅ T-11 실 서버 배포        AWS EC2(프리티어, Amazon Linux 2023)에 MySQL+앱 컨테이너 실제 배포. 보안 그룹(SSH는 내 IP만,
+                          8080 전체 공개, 3306 비공개), git clone(master) → .env 운영용 DB_PASSWORD 신규 생성 →
+                          docker compose up -d --build. 브라우저로 퍼블릭 IP:8080 접속해 실제 인터넷 통한 배포 확인
+                          완료. 상세 → 아래 "오늘(2026-07-26) T-11" 절 (2026-07-26)
 
 ⬜ (사소, 우선순위 낮음) 로그 파일에 찍히는 한글 예외 메시지가 콘솔 출력 경로에서 일부 깨짐 — DB 저장값/HTTP JSON 응답엔 영향 없음, 순수 콘솔 표시 문제로 추정. 다시 볼 때 아래 "오늘 겪은 인프라 문제" 참고
 ```
+
+## 오늘(2026-07-26) T-11 실 서버 배포
+
+> 다른 사람이 같은 사양(AWS EC2 프리티어)으로 이 프로젝트를 처음부터 배포할 때는 이 절 대신
+> **[docs/deploy/aws-ec2.md](docs/deploy/aws-ec2.md)** 런북을 그대로 따라가면 된다 — 여기 아래 내용은
+> 그 문서의 근거가 된 이번 세션의 진행 기록.
+
+`T-10`이 안 끝난 상태였지만 사용자 판단으로 순서를 바꿔서 `T-11`(MySQL을 실제 서버로 배포)부터 먼저 진행했다.
+
+**호스팅/DB 선택**: AWS EC2 프리티어(`t2.micro`/`t3.micro`, 리전 `ap-southeast-2` 시드니, AMI `Amazon Linux 2023`)로
+결정. DB는 AWS RDS(관리형)와 EC2 안 MySQL 컨테이너 중 논의했는데, RDS는 `docker-entrypoint-initdb.d` 같은 자동
+init 스크립트 지원이 없어 스키마 4개(`screening_db` 등) 세팅을 수동으로 다시 해야 해서, 기존 `docker-compose.yml`
++ `sql/01~05-*.sql`을 그대로 재사용할 수 있는 **EC2 안 MySQL 컨테이너 쪽으로 확정** — 추가 학습 비용 없음.
+
+**보안 그룹**: SSH(22)는 "내 IP"로만 제한, 사용자 지정 TCP 8080은 `0.0.0.0/0`(브라우저 테스트용, 나중에 `T-12`에서
+nginx 붙이면 80/443만 열고 8080은 닫을 예정), **3306(MySQL)은 아예 안 엶** — 앱 컨테이너만 도커 내부 네트워크로
+접근.
+
+**배포 과정에서 겪은 문제들**:
+1. **`icacls` 권한 설정 실수** — Windows에서 `.pem` 키 권한을 `"$env:USERNAME:R"`처럼 큰따옴표 안에 `$env:` 변수를
+   붙여 썼더니 PowerShell이 `USERNAME:R`을 통째로 환경변수 이름으로 착각해 빈 값이 되는 문법 함정에 걸림 →
+   `"${env:USERNAME}:R"`처럼 중괄호로 변수 경계를 명확히 해서 해결
+2. **SSH `Permission denied`** — 권한 설정 명령이 (1번 문제로) 실제로는 적용이 안 됐던 상태라 `.pem` 파일에
+   `Authenticated Users`/`BUILTIN\Users` 그룹 권한이 그대로 남아있었음. `icacls ... /remove "Authenticated Users"`,
+   `/remove "BUILTIN\Users"`로 제거해서 해결 (OpenSSH는 소유자 본인 외 `Administrators`/`SYSTEM`까지는 허용하지만
+   그 외 그룹이 남아있으면 "너무 열려있다"고 거부함)
+3. **Amazon Linux 2023 `dnf`의 `docker` 패키지엔 Compose/Buildx가 기본 포함 안 됨** — 둘 다 GitHub 릴리스에서
+   바이너리를 받아 `/usr/local/lib/docker/cli-plugins/`에 수동 설치해야 했음 (`docker-compose`, `docker-buildx`
+   각각). `docker compose up --build` 실행 시 `compose build requires buildx 0.17.0 or later` 에러로 처음 발견함
+4. **첫 빌드 시도가 통째로 날아감** — SSH 세션이 빌드 도중 끊기면서(`docker compose up -d --build`가 `-d`에도
+   불구하고 이미지 빌드 자체는 포그라운드로 진행됨) 컨테이너가 하나도 안 만들어진 채 프로세스가 죽음
+   (`docker ps -a` 완전히 비어있음으로 확인). **`tmux` 세션 안에서 재실행**하는 방식으로 전환해 SSH 끊김에
+   영향받지 않게 해결
+5. **로컬 `git`이 `master`보다 `local_branch`가 3커밋 앞서 있던 상태** — fast-forward 머지 가능한 상황이라
+   GUI(Fork)에서 `master` 체크아웃 → `local_branch` merge → 양쪽 다 push로 정리. 서버는 `master` 브랜치 기준으로
+   `git clone`
+
+**환경변수 분리**: 로컬 PC의 `.env`(개발용 `DB_PASSWORD`)와 EC2 서버 안의 `.env`(운영용, `openssl rand -base64 24`로
+새로 생성)는 완전히 별개의 파일 — `docker-compose.yml` 코드는 양쪽에 동일하게 두고, `docker compose up`을 실행하는
+컴퓨터가 어디냐에 따라 그 컴퓨터의 로컬 `.env`를 읽는 방식이라 IP나 다른 조건으로 자동 분기하는 로직은 없음.
+
+**로컬 SSH 편의 설정**: `~/.ssh/config`(Windows: `C:\Users\water\.ssh\config`)에 `Host cinema` 별칭 등록해서
+매번 `ssh -i "D:\aws\cinema-key.pem" ec2-user@<퍼블릭IP>` 대신 `ssh cinema`로 접속 가능하게 함. 메모장으로 처음
+저장했을 때 확장자가 자동으로 붙어 `config.txt`로 저장되는 바람에 ssh가 못 찾는 문제가 있었음 — 파일명에서
+`.txt` 제거로 해결 (config 파일은 정확히 `config`라는 이름이어야 ssh가 자동으로 읽음).
+
+**검증**: `docker compose ps`로 `mysql`/`app` 컨테이너 둘 다 정상 기동 확인 → 로컬 브라우저에서
+`http://<퍼블릭IP>:8080` 접속해서 정적 HTML 메인 화면이 뜨는 것까지 확인 완료. **전체 예매 플로우(스케줄 선택 →
+좌석 선택 → 예매)까지의 실제 통합 테스트는 아직 안 함** — 다음에 필요하면 진행.
+
+**컨테이너 내리기/올리기**: 학습 세션이 끝나면 EC2 인스턴스는 그대로 켜둔 채 `docker compose down`으로 컨테이너만
+내리기로 함 (프리티어 750시간/월이 인스턴스 1대 24시간 운영을 이미 커버해서 인스턴스까지 끌 필요는 없다고 판단;
+인스턴스를 중지했다 재시작하면 Elastic IP를 안 붙여놔서 퍼블릭 IP가 바뀌는 것도 고려한 결정).
 
 ## 오늘(2026-07-24) T-04 HELD 타임아웃 배치 구현
 
@@ -188,3 +252,16 @@ Thymeleaf SSR로 좌석 화면을 먼저 구현했다가, 프로젝트를 처음
 | 비밀번호 | `password` (docker-compose.yml/application.yaml의 4개 `app.datasource.*` 블록 전부 `.env`의 `DB_PASSWORD` 하나로 통일) |
 | DB명 | `screening_db`/`seat_db`/`booking_db`/`payment_db` 4개 (T-09, 2026-07-21 — 예전엔 `cinema` 단일 스키마였음) |
 | 접속 URL 예 | `jdbc:mysql://localhost:3306/seat_db?serverTimezone=Asia/Seoul&characterEncoding=UTF-8` (나머지 3개도 DB명만 다름) |
+
+## 실 서버(T-11, AWS EC2) 환경
+
+| 항목 | 값 |
+|------|---|
+| 호스팅 | AWS EC2 프리티어, 리전 `ap-southeast-2`(시드니), AMI `Amazon Linux 2023` |
+| 퍼블릭 IP | `54.153.149.155` (Elastic IP 미사용 — 인스턴스를 중지했다 재시작하면 바뀔 수 있음) |
+| SSH 접속 | `ssh cinema` (로컬 `~/.ssh/config`에 별칭 등록됨, 키 파일 `D:\aws\cinema-key.pem`) |
+| 앱 접속 | `http://54.153.149.155:8080` |
+| 배포 방식 | SSH 접속 → `~/cinema`(git clone된 `master` 브랜치) → `docker compose up -d --build` (빌드는 `tmux` 세션 안에서 실행 — SSH 끊김 방지) |
+| 컨테이너 내리기 | `~/cinema`에서 `docker compose down` (인스턴스 자체는 계속 켜둠) |
+| `.env` 위치 | `~/cinema/.env` (서버 로컬 파일, git 미포함, 운영용 `DB_PASSWORD` 별도 생성값) |
+| 보안 그룹 | SSH(22) 내 IP만, 8080 전체 공개, 3306 비공개 |
