@@ -1,0 +1,7 @@
+services:
+  app:
+    # GitHub Actions가 빌드해서 GHCR에 push한 이미지. base(docker-compose.yml)의 build: 설정은
+    # 그대로 남아있지만, 배포 스크립트가 `pull` 먼저 실행해서 이 태그를 로컬에 받아두면
+    # `up -d`는 그 이미지를 그대로 쓰고 재빌드하지 않는다 (로컬 개발용 docker-compose.yml 단독
+    # 실행 시엔 이 파일이 안 끼어드니 지금처럼 build 방식 그대로 동작)
+    image: ghcr.io/soojin1999/cinema:latest
