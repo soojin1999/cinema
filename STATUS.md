@@ -8,6 +8,10 @@
 
 ## 🎯 다음 세션 시작 지점
 
+**`T-12` CD 파이프라인 완료 (2026-07-28)**: GitHub Actions로 `master` push → 이미지 빌드+GHCR push → EC2 SSH
+배포까지 자동화 완료, 재실행으로 성공 확인됨. CI(자동 테스트)는 `T-10`/`T-04` JUnit이 채워질 때까지 의도적으로
+미포함 — 상세 → `docs/deploy/cicd.md`, `Todo.md` T-12. **다음 세션은 `T-10`/`T-04` 테스트 마무리부터.**
+
 **`T-11` 완료 (2026-07-26)**: AWS EC2(프리티어)에 MySQL+앱 실제 배포, 브라우저로 인터넷 통해 접속 확인까지 끝났다.
 원래 정해둔 순서(`T-10` 마무리 → `T-11` → `T-12`)를 사용자 판단으로 뒤집어서 `T-10`이 안 끝난 채로 `T-11`을
 먼저 진행함 — 상세 → 아래 "오늘(2026-07-26) T-11" 절.
@@ -42,9 +46,9 @@ FK 4개 제거, `config` 패키지 도메인별 `DataSource`+`SqlSessionFactory`
 
 다음 세션 우선순위:
 
-1. **`T-12` CI/CD 착수** — GitHub Actions(또는 self-hosted runner)로 push 훅 → 이미지 빌드 → 배포 서버 재배포 자동화. 지금까지 `docs/deploy/aws-ec2.md` §9(수동 재배포: `git pull` + `docker compose up -d --build`)로 손으로 하던 걸 자동화하는 게 목표. nginx blue/green 무중단 배포는 이 안에서 별도 단계로 다룸
-2. **`T-10` 계속** — 충돌감지형(낙관적) 락 쪽 동시성 테스트("기다리지 않고 즉시 충돌") 추가. 그다음 `SeatService`의 `confirm()`/`release()`/`getSeatGrid()`, 다른 도메인(`PaymentService` 등)으로 Mockito 테스트 범위 확장
-3. `T-04` 마무리 — `BookingTimeoutBatch`용 JUnit 테스트 추가(T-10 범위에 편입 가능). `@Scheduled` 주석 해제는 사용자가 직접 진행
+1. **`T-10` 계속** — 충돌감지형(낙관적) 락 쪽 동시성 테스트("기다리지 않고 즉시 충돌") 추가. 그다음 `SeatService`의 `confirm()`/`release()`/`getSeatGrid()`, 다른 도메인(`PaymentService` 등)으로 Mockito 테스트 범위 확장
+2. `T-04` 마무리 — `BookingTimeoutBatch`용 JUnit 테스트 추가(T-10 범위에 편입 가능). `@Scheduled` 주석 해제는 사용자가 직접 진행
+3. **`T-12` CI 마저 완성** — 위 1~2번으로 JUnit이 충분히 채워지면 `deploy.yml`에 `build-and-push` 앞단 `test` job(`./gradlew test`) 추가해서 진짜 CI로 확장. nginx blue/green 무중단 배포도 이 시점에 별도로 다룸
 4. 이후 `T-08`(관리자 CRUD) 착수
 
 **순서 확정 (2026-07-24) → 순서 변경(2026-07-26, `T-11`을 `T-10` 전에 진행) → 최종 순서 재확정(2026-07-26)**:
@@ -96,6 +100,12 @@ CI/CD를 CRUD보다 먼저 하는 기존 취지(학습 우선순위)는 유지�
                           8080 전체 공개, 3306 비공개), git clone(master) → .env 운영용 DB_PASSWORD 신규 생성 →
                           docker compose up -d --build. 브라우저로 퍼블릭 IP:8080 접속해 실제 인터넷 통한 배포 확인
                           완료. 상세 → 아래 "오늘(2026-07-26) T-11" 절 (2026-07-26)
+✅ T-12 CD 파이프라인 착수   GitHub Actions로 master push → 이미지 빌드+GHCR push → EC2 SSH 배포 자동화 완료(CI 자동
+                          테스트는 아직 미포함, 스코프 밖). .github/workflows/deploy.yml + docker-compose.prod.yml
+                          (override로 app 서비스만 GHCR 이미지 사용). EC2 보안 그룹 SSH(22)가 "내 IP만"이라 GitHub
+                          러너 IP가 못 들어가 첫 배포가 타임아웃났던 문제 발견 → 0.0.0.0/0으로 개방(키 인증만 허용돼
+                          있어 실질 위험 낮음)해서 해결, 재실행으로 빌드+배포 둘 다 성공 확인. 상세 → docs/deploy/cicd.md,
+                          남은 일(test job 추가, nginx blue/green)은 Todo.md T-12 (2026-07-28)
 
 ⬜ (사소, 우선순위 낮음) 로그 파일에 찍히는 한글 예외 메시지가 콘솔 출력 경로에서 일부 깨짐 — DB 저장값/HTTP JSON 응답엔 영향 없음, 순수 콘솔 표시 문제로 추정. 다시 볼 때 아래 "오늘 겪은 인프라 문제" 참고
 ```

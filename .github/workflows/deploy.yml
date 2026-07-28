@@ -28,7 +28,7 @@ jobs:
             type=raw,value=latest
             type=sha,format=short
 
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v6  # build & push
         with:
           context: .
           file: docker/app/Dockerfile
@@ -41,11 +41,11 @@ jobs:
     steps:
       - uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.EC2_HOST }}
+          host: ${{ secrets.EC2_HOST }}     # github actions setting 에 있는 내용
           username: ec2-user
-          key: ${{ secrets.EC2_SSH_KEY }}
+          key: ${{ secrets.EC2_SSH_KEY }}   # github actions setting 에 있는 내용
           script: |
             cd ~/cinema
             git pull origin master
-            docker compose -f docker-compose.yml -f docker-compose.prod.yml pull app
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml pull app  
             docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
