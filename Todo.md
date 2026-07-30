@@ -42,14 +42,15 @@
   상태에서의 애플리케이션 레벨 검증 등, 위 "미정" 항목 참고) 전에 테스트 기반부터 다지기로 함
 
 ### T-10. JUnit 테스트 작성 (사용자 최초 학습 — 단계별 진행)
-- **현재**: 4단계 착수. `SeatServiceConcurrencyTest`에 대기형(비관적) 락 동시성 테스트(스레드 2개) 작성 완료 (2026-07-21).
-  충돌감지형(낙관적) 락 쪽은 아직 미작성. 상세 커버리지 → [docs/testing.md](docs/testing.md)
+- **현재**: 4단계까지 완료. `SeatServiceConcurrencyTest`에 대기형(비관적)(2026-07-21) + 충돌감지형(낙관적)(2026-07-30)
+  락 동시성 테스트(각 스레드 2개) 둘 다 작성·통과 확인됨. 상세 커버리지 → [docs/testing.md](docs/testing.md)
 - **목표**: 지금까지 구현된 로직(특히 동시성 제어)을 자동화된 테스트로 관리
 - **계획된 4단계** (한 번에 다 안 하고 순서대로, 매 단계 확인받으며 진행):
   1. JUnit 기초 문법 — `@Test`, assertion, `./gradlew test` 실행법 ✅ (2026-07-21)
   2. 순수 로직 테스트 — `SeatService`의 상태 검증(예외 던지는 경로) 위주 — `holdPessimistic`/`holdOptimistic` 완료, `confirm`/`release`/`getSeatGrid` 남음
   3. Mockito로 의존성 모킹 — `SeatMapper`를 가짜로 대체해서 `holdPessimistic`/`holdOptimistic` 성공/충돌 경로 테스트 ✅ (2026-07-21, 4개 테스트 완료)
-  4. 동시성 통합 테스트 — 진짜 DB 위에서 여러 스레드가 동시에 같은 좌석을 잡을 때 대기형 vs 충돌감지형 락이 실제로 어떻게 다른지 검증 (이 프로젝트 핵심 학습 대상). **착수함** — 대기형 락(스레드 2개) 완료 (2026-07-21), 충돌감지형 락 쪽 남음
+  4. 동시성 통합 테스트 — 진짜 DB 위에서 여러 스레드가 동시에 같은 좌석을 잡을 때 대기형 vs 충돌감지형 락이 실제로 어떻게 다른지 검증 (이 프로젝트 핵심 학습 대상). ✅ **완료** — 대기형 락(2026-07-21), 충돌감지형 락(2026-07-30) 둘 다 통과
+- **남은 것**: `SeatService`의 `confirm()`/`release()`/`getSeatGrid()` 테스트, 다른 도메인(`PaymentService` 등)으로 Mockito 테스트 범위 확장 — 상세 → [docs/testing.md](docs/testing.md) "다음에 할 것"
 - **2026-07-21 부수 발견**: 대기형 락 동시성 테스트를 처음 돌렸을 때 스레드 2개가 다 성공해버리는(락이 전혀 안 걸리는) 현상 발견 →
   `PlatformTransactionManager` 빈이 하나도 없어서 `@Transactional`이 앱 전체(seat/payment/booking)에서 조용히 무시되고
   있던 버그였음(T-09가 `DataSource`를 4개로 쪼개면서 Spring Boot의 자동 트랜잭션 매니저 생성이 조건 불충족으로 빠짐).

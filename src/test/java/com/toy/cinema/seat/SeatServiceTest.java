@@ -53,8 +53,7 @@ class SeatServiceTest {
         //테스트하려는 메서드 실행
         seatService.holdPessimistic(new SeatHoldCommand(scheduleId, seatId));
         //holdPessimistic 안에 updateStatus가 실제로 실행 됐는지 확인 + 파라미터 객체로 해당 메서드가 실행됐는지
-        verify(mockMapper).updateStatus(
-                new UpdateStatusParams(scheduleId, seatId, SeatStatus.HELD, SeatStatus.AVAILABLE));
+        verify(mockMapper).updateStatus(new UpdateStatusParams(scheduleId, seatId, SeatStatus.HELD, SeatStatus.AVAILABLE));
     }
 
     @Test

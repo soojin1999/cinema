@@ -8,9 +8,15 @@
 
 ## 🎯 다음 세션 시작 지점
 
+**`T-10` 4단계(동시성 통합테스트) 완료 (2026-07-30)**: `SeatServiceConcurrencyTest`에 충돌감지형(낙관적) 락
+동시성 테스트(`충돌감지형_락에_동시_2명이_요청하면_1명만_성공한다`) 추가 — 대기형(2026-07-21)에 이어 두 락 방식의
+실패 모드 차이(블로킹 후 `SeatNotAvailableException` vs 즉시 `SeatConflictException`)를 실제 DB로 관찰하는
+목표 완료, 둘 다 통과 확인됨. 상세 → `docs/testing.md`, `Todo.md` T-10. **다음 세션은 `SeatService`의
+`confirm()`/`release()`/`getSeatGrid()` 테스트 + 다른 도메인 Mockito 확장부터, 그다음 `T-04` JUnit, `T-12` CI 확장.**
+
 **`T-12` CD 파이프라인 완료 (2026-07-28)**: GitHub Actions로 `master` push → 이미지 빌드+GHCR push → EC2 SSH
 배포까지 자동화 완료, 재실행으로 성공 확인됨. CI(자동 테스트)는 `T-10`/`T-04` JUnit이 채워질 때까지 의도적으로
-미포함 — 상세 → `docs/deploy/cicd.md`, `Todo.md` T-12. **다음 세션은 `T-10`/`T-04` 테스트 마무리부터.**
+미포함 — 상세 → `docs/deploy/cicd.md`, `Todo.md` T-12.
 
 **`T-11` 완료 (2026-07-26)**: AWS EC2(프리티어)에 MySQL+앱 실제 배포, 브라우저로 인터넷 통해 접속 확인까지 끝났다.
 원래 정해둔 순서(`T-10` 마무리 → `T-11` → `T-12`)를 사용자 판단으로 뒤집어서 `T-10`이 안 끝난 채로 `T-11`을
@@ -46,7 +52,7 @@ FK 4개 제거, `config` 패키지 도메인별 `DataSource`+`SqlSessionFactory`
 
 다음 세션 우선순위:
 
-1. **`T-10` 계속** — 충돌감지형(낙관적) 락 쪽 동시성 테스트("기다리지 않고 즉시 충돌") 추가. 그다음 `SeatService`의 `confirm()`/`release()`/`getSeatGrid()`, 다른 도메인(`PaymentService` 등)으로 Mockito 테스트 범위 확장
+1. **`T-10` 마무리** — 충돌감지형(낙관적) 락 동시성 테스트까지 완료됨(2026-07-30). 남은 건 `SeatService`의 `confirm()`/`release()`/`getSeatGrid()`, 다른 도메인(`PaymentService` 등)으로 Mockito 테스트 범위 확장
 2. `T-04` 마무리 — `BookingTimeoutBatch`용 JUnit 테스트 추가(T-10 범위에 편입 가능). `@Scheduled` 주석 해제는 사용자가 직접 진행
 3. **`T-12` CI 마저 완성** — 위 1~2번으로 JUnit이 충분히 채워지면 `deploy.yml`에 `build-and-push` 앞단 `test` job(`./gradlew test`) 추가해서 진짜 CI로 확장. nginx blue/green 무중단 배포도 이 시점에 별도로 다룸
 4. 이후 `T-08`(관리자 CRUD) 착수
@@ -89,9 +95,10 @@ CI/CD를 CRUD보다 먼저 하는 기존 취지(학습 우선순위)는 유지�
 ✅ T-09 DB 스키마 분리       screening_db/seat_db/booking_db/payment_db 4개로 분리, 도메인 간 FK 4개 제거, config 패키지에
                           도메인별 DataSource+SqlSessionFactory+@MapperScan(sqlSessionFactoryRef) 구성. docker-compose.yml/
                           application.yaml 갱신, 전체 Saga 흐름 실제 HTTP 검증 완료 (2026-07-21)
-✅ T-10 4단계 착수 + 버그 수정  SeatServiceConcurrencyTest — 대기형(비관적) 락 동시성 테스트(스레드 2개). 처음 돌렸을 때
-                          PlatformTransactionManager 빈 부재로 @Transactional 전체가 무시되던 버그 발견·수정(config
-                          패키지 4개 + Seat/Payment/BookingService). 충돌감지형 락 쪽은 아직 미작성 (2026-07-21)
+✅ T-10 4단계 완료          SeatServiceConcurrencyTest — 대기형(비관적)(2026-07-21) + 충돌감지형(낙관적)(2026-07-30)
+                          락 동시성 테스트(각 스레드 2개) 둘 다 작성·통과. 대기형 최초 실행 시 PlatformTransactionManager
+                          빈 부재로 @Transactional 전체가 무시되던 버그 발견·수정(config 패키지 4개 + Seat/Payment/
+                          BookingService). SeatService의 confirm/release/getSeatGrid, 다른 도메인은 아직 미작성 (2026-07-30)
 ✅ T-04 HELD 타임아웃 배치   BookingTimeoutBatch(+ 수동 트리거용 BookingTimeoutBatchController) 신설. booking 도메인이
                           스캔 주도(findStalePending), BookingOrchestrator.tryConfirmIfPaid 재사용. 두 분기(confirm
                           구제/release+cancel) 다 DB에 테스트 데이터 심어서 수동 검증 완료. 상세 → 아래

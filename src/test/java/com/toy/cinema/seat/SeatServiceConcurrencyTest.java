@@ -1,5 +1,6 @@
 package com.toy.cinema.seat;
 
+import com.toy.cinema.common.exception.SeatConflictException;
 import com.toy.cinema.common.exception.SeatNotAvailableException;
 import com.toy.cinema.seat.dto.SeatHoldCommand;
 import org.junit.jupiter.api.BeforeEach;
@@ -82,5 +83,40 @@ class SeatServiceConcurrencyTest {
 
         assertEquals(1, successCount.get());
         assertEquals(1, conflictCount.get());
+    }
+
+    @Test
+    void 충돌감지형_락에_동시_2명이_요청하면_1명만_성공한다() throws InterruptedException {
+        int threadCount = 2;
+        ExecutorService executor = Executors.newFixedThreadPool(threadCount);
+
+        CountDownLatch startSignal = new CountDownLatch(1);
+        CountDownLatch doneSignal = new CountDownLatch(threadCount);
+        AtomicInteger successCnt = new AtomicInteger();
+        AtomicInteger failCnt = new AtomicInteger();
+
+        for(int i = 0; i < threadCount; i++) {
+            executor.submit(() -> {
+                try {
+                    startSignal.await();
+                    seatService.holdOptimistic(new SeatHoldCommand(scheduleId, seatId));
+                    successCnt.incrementAndGet();
+                } catch(SeatConflictException e) {
+                    failCnt.incrementAndGet();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+                finally {
+                    doneSignal.countDown();
+                }
+            });
+        }
+
+        startSignal.countDown();
+        doneSignal.await();
+        executor.shutdown();
+
+        assertEquals(1, successCnt.get());
+        assertEquals(1, failCnt.get());
     }
 }
